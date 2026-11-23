@@ -197,6 +197,7 @@ interface MusicContextValue {
   toggleSaveCollection: (item: Omit<SavedCollectionItem, 'savedAt'>) => void;
   searchHistory: string[];
   addSearchHistory: (query: string) => void;
+  removeSearchHistoryItem: (query: string) => void;
   clearSearchHistory: () => void;
   clearPlayHistory: () => void;
 
@@ -1455,7 +1456,16 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     const trimmed = query.trim();
     if (!trimmed) return;
     setSearchHistory((prev) => {
-      const next = [trimmed, ...prev.filter((q) => q.toLowerCase() !== trimmed.toLowerCase())].slice(0, 12);
+      const next = [trimmed, ...prev.filter((q) => q.toLowerCase() !== trimmed.toLowerCase())].slice(0, 15);
+      saveSearchHistory(next);
+      return next;
+    });
+  }, []);
+
+  const removeSearchHistoryItem = useCallback((query: string) => {
+    const target = query.trim().toLowerCase();
+    setSearchHistory((prev) => {
+      const next = prev.filter((q) => q.trim().toLowerCase() !== target);
       saveSearchHistory(next);
       return next;
     });
@@ -1464,7 +1474,8 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const clearSearchHistory = useCallback(() => {
     setSearchHistory([]);
     saveSearchHistory([]);
-  }, []);
+    showToast('History pencarian dihapus');
+  }, [showToast]);
 
   const clearPlayHistory = useCallback(() => {
     setHistory([]);
@@ -1645,6 +1656,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     toggleSaveCollection,
     searchHistory,
     addSearchHistory,
+    removeSearchHistoryItem,
     clearSearchHistory,
     clearPlayHistory,
     settings,
