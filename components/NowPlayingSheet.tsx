@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   ArrowDown,
@@ -17,7 +17,9 @@ import {
   Pause,
   PictureInPicture2,
   Play,
+  Plus,
   Radio,
+  RefreshCw,
   Repeat,
   Repeat1,
   RotateCcw,
@@ -38,7 +40,7 @@ import { AodPlayerOverlay } from './AodPlayerOverlay';
 import { ArtworkImage } from './ArtworkImage';
 import { EqualizerSheet, SleepTimerSheet } from './AudioToolsModals';
 import { LyricsShareModal } from './LyricsShareModal';
-import { useMusic } from './MusicProvider';
+import { useMusic, type UpNextMode } from './MusicProvider';
 import { PlayerBackground } from './PlayerBackground';
 import { PlayerSlider } from './PlayerSlider';
 import { SyncedLyricsView } from './SyncedLyricsView';
@@ -73,6 +75,14 @@ export function NowPlayingSheet() {
     toggleLike,
     openPlaylistPicker,
     startRadio,
+    refreshUpNext,
+    upNextMode,
+    setUpNextMode,
+    upNextRefreshing,
+    addTrackToQueue,
+    likedTracks,
+    history,
+    playlists,
     lyrics,
     lyricsLoading,
     jumpToQueueIndex,
@@ -93,6 +103,24 @@ export function NowPlayingSheet() {
   const [eqOpen, setEqOpen] = useState(false);
   const [sleepSheetOpen, setSleepSheetOpen] = useState(false);
   const [queueFilter, setQueueFilter] = useState('');
+
+  const quickAddCandidates = useMemo(() => {
+    const inQueue = new Set(queueState.queue.map((t) => t.videoId));
+    const pool = [
+      ...likedTracks,
+      ...playlists.flatMap((pl) => pl.tracks),
+      ...history.map((h) => h.track),
+    ];
+    const seen = new Set<string>();
+    const out = [];
+    for (const t of pool) {
+      if (!t?.videoId || inQueue.has(t.videoId) || seen.has(t.videoId)) continue;
+      seen.add(t.videoId);
+      out.push(t);
+      if (out.length >= 8) break;
+    }
+    return out;
+  }, [queueState.queue, likedTracks, playlists, history]);
   const [pressedControl, setPressedControl] = useState<'prev' | 'play' | 'next' | null>(
     null
   );
@@ -785,29 +813,64 @@ export function NowPlayingSheet() {
 
             {nowPlayingTab === 'queue' && (
               <div className="w-full max-w-2xl h-full flex flex-col py-2 min-h-0">
-                <div className="flex items-center justify-between gap-2 mb-3 shrink-0">
+                <div className="flex items-center justify-between gap-2 mb-2.5 shrink-0">
                   <div>
                     <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                       Up Next
                     </h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      {queueState.queue.length} tracks in queue
+                      {queueState.queue.length} lagu di antrean
                       <span aria-hidden="true"> · </span>
                       <span>
                         {settings.autoContinueRadio
-                          ? 'Auto-radio active'
-                          : 'Manual queue'}
+                          ? 'Auto Up Next aktif'
+                          : 'Antrean manual'}
                       </span>
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => void startRadio(currentTrack)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl metro-surface text-xs font-medium text-slate-800 dark:text-white hover:text-[var(--m3-primary)] transition-colors whitespace-nowrap shrink-0"
+                    disabled={upNextRefreshing}
+                    onClick={() => void refreshUpNext()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl metro-surface text-xs font-medium text-slate-800 dark:text-white hover:text-[var(--m3-primary)] disabled:opacity-60 transition-colors whitespace-nowrap shrink-0"
                   >
-                    <Radio className="w-3.5 h-3.5 text-[var(--m3-primary)]" />
-                    <span>Refresh Radio</span>
+                    <RefreshCw
+                      className={cn(
+                        'w-3.5 h-3.5 text-[var(--m3-primary)]',
+                        upNextRefreshing && 'animate-spin'
+                      )}
+                    />
+                    <span>{upNextRefreshing ? 'Memuat...' : 'Refresh Up Next'}</span>
                   </button>
+                </div>
+
+                {/* Up Next Source Mode Pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-2 shrink-0">
+                  {(
+                    [
+                      { id: 'mixed', label: 'Campuran' },
+                      { id: 'discover', label: 'Trending & Discovery' },
+                      { id: 'related', label: 'Lagu Terkait' },
+                      { id: 'library', label: 'Dari Library' },
+                    ] as Array<{ id: UpNextMode; label: string }>
+                  ).map((modeOpt) => {
+                    const active = upNextMode === modeOpt.id;
+                    return (
+                      <button
+                        key={modeOpt.id}
+                        type="button"
+                        onClick={() => setUpNextMode(modeOpt.id)}
+                        className={cn(
+                          'px-3 h-7 rounded-full text-[11.5px] font-semibold shrink-0 transition-colors',
+                          active
+                            ? 'bg-[var(--m3-primary)] text-[var(--m3-on-primary)]'
+                            : 'metro-surface text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                        )}
+                      >
+                        {modeOpt.label}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* Queue Live Search Input */}
@@ -925,6 +988,47 @@ export function NowPlayingSheet() {
                         </div>
                       );
                     })}
+
+                  {quickAddCandidates.length > 0 && !queueFilter.trim() && (
+                    <div className="pt-3 mt-2 border-t border-black/5 dark:border-white/10 space-y-2">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-1">
+                        Tambah Lagu Lain ke Up Next
+                      </p>
+                      <div className="space-y-1.5">
+                        {quickAddCandidates.map((cand) => (
+                          <div
+                            key={`quick-add-${cand.videoId}`}
+                            className="flex items-center gap-3 p-2 rounded-2xl metro-surface"
+                          >
+                            <ArtworkImage
+                              src={cand.thumbnail}
+                              alt={cand.title}
+                              className="w-10 h-10 shrink-0"
+                              rounded="rounded-xl"
+                              sizeHint="sm"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-semibold truncate text-slate-900 dark:text-white">
+                                {cand.title}
+                              </p>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                {cand.artist}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => addTrackToQueue(cand)}
+                              aria-label={`Tambahkan ${cand.title} ke Up Next`}
+                              className="h-8 px-3 rounded-full bg-[var(--m3-primary)]/15 text-[var(--m3-primary)] text-[11px] font-semibold inline-flex items-center gap-1 hover:bg-[var(--m3-primary)]/25 shrink-0"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              Antrean
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

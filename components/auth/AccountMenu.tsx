@@ -3,10 +3,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { LayoutDashboard, LogIn, LogOut, ShieldCheck, User as UserIcon } from 'lucide-react';
+import { LayoutDashboard, LogIn, LogOut, Settings, Trophy, User as UserIcon } from 'lucide-react';
 import { useAuth } from './AuthProvider';
+import { VerifiedBadge } from './VerifiedBadge';
 import { useMusic } from '@/components/MusicProvider';
-import { displayNameOf, initialsOf } from '@/lib/auth/types';
+import { displayNameOf, initialsOf, roleLabelOf } from '@/lib/auth/types';
 import { cn } from '@/lib/utils';
 
 export function AccountAvatar({ size = 32 }: { size?: number }) {
@@ -58,8 +59,36 @@ function ProfileLibraryButton({
   );
 }
 
+function AccountSettingsButton({
+  onNavigate,
+  className,
+}: {
+  onNavigate?: () => void;
+  className?: string;
+}) {
+  const { setActiveTab, openDetail } = useMusic();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        onNavigate?.();
+        openDetail(null);
+        setActiveTab('settings');
+      }}
+      className={cn(
+        'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm hover:bg-black/5 dark:hover:bg-white/10',
+        className
+      )}
+    >
+      <Settings className="w-4 h-4" />
+      Pengaturan Akun
+    </button>
+  );
+}
+
 function AccountMenuCard({ onNavigate }: { onNavigate?: () => void }) {
-  const { profile, email, isAdmin, isBanned, signOut } = useAuth();
+  const { userId, profile, email, isAdmin, isBanned, signOut } = useAuth();
+  const { openDetail, setActiveTab } = useMusic();
   const router = useRouter();
   const name = displayNameOf(profile, email);
 
@@ -68,7 +97,10 @@ function AccountMenuCard({ onNavigate }: { onNavigate?: () => void }) {
       <div className="flex items-center gap-3 px-1 py-1.5">
         <AccountAvatar size={38} />
         <div className="min-w-0">
-          <p className="text-sm font-semibold truncate">{name}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-semibold truncate">{name}</p>
+            <VerifiedBadge role={profile?.role} size="sm" />
+          </div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
             {email ?? '—'}
           </p>
@@ -87,6 +119,32 @@ function AccountMenuCard({ onNavigate }: { onNavigate?: () => void }) {
           Admin Dashboard
         </Link>
       )}
+      {userId && (
+        <button
+          type="button"
+          onClick={() => {
+            onNavigate?.();
+            openDetail({ kind: 'user-profile', id: userId, title: name });
+          }}
+          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm hover:bg-black/5 dark:hover:bg-white/10"
+        >
+          <UserIcon className="w-4 h-4" />
+          Profil Publik Saya
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          onNavigate?.();
+          openDetail(null);
+          setActiveTab('listeners');
+        }}
+        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm hover:bg-black/5 dark:hover:bg-white/10"
+      >
+        <Trophy className="w-4 h-4" />
+        Top Pendengar
+      </button>
+      <AccountSettingsButton onNavigate={onNavigate} />
       <ProfileLibraryButton onNavigate={onNavigate} />
       {isBanned && (
         <p className="px-2.5 py-1.5 text-[11px] text-red-600 dark:text-red-400">
@@ -158,7 +216,7 @@ export function MobileAccountButton() {
 
 /** Sidebar footer block: sign-in CTA for guests, account card for members. */
 export function SidebarAccount({ className }: { className?: string }) {
-  const { isAuthenticated, ready, profile, email, isAdmin, signOut } = useAuth();
+  const { isAuthenticated, ready, profile, email, signOut } = useAuth();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -208,15 +266,14 @@ export function SidebarAccount({ className }: { className?: string }) {
       >
         <AccountAvatar size={34} />
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-semibold truncate">{displayNameOf(profile, email)}</p>
+          <div className="flex items-center gap-1">
+            <p className="text-[13px] font-semibold truncate">{displayNameOf(profile, email)}</p>
+            <VerifiedBadge role={profile?.role} size="xs" />
+          </div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate inline-flex items-center gap-1">
-            {isAdmin ? (
-              <>
-                <ShieldCheck className="w-3 h-3" /> Admin
-              </>
-            ) : (
-              'Free account'
-            )}
+            {profile?.role === 'developer' || profile?.role === 'admin'
+              ? roleLabelOf(profile.role)
+              : 'Free account'}
           </p>
         </div>
         <span

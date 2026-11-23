@@ -160,6 +160,7 @@ export function SearchView() {
     openDetail,
     searchHistory,
     addSearchHistory,
+    removeSearchHistoryItem,
     clearSearchHistory,
     settings,
     startRadio,
@@ -289,12 +290,26 @@ export function SearchView() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmed = query.trim();
     if (scope === 'local') {
+      if (trimmed) addSearchHistory(trimmed);
       setShowSuggestions(false);
       return;
     }
     void executeSearch(query, activeTab);
   };
+
+  const matchingHistory = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return searchHistory;
+    return searchHistory.filter((item) => item.toLowerCase().includes(q));
+  }, [query, searchHistory]);
+
+  const filteredSuggestions = useMemo(() => {
+    if (scope !== 'online' || query.trim().length < 2) return [];
+    const historySet = new Set(matchingHistory.map((h) => h.toLowerCase()));
+    return suggestions.filter((s) => !historySet.has(s.toLowerCase())).slice(0, 7);
+  }, [scope, query, matchingHistory, suggestions]);
 
   const handleTabChange = (tab: SearchTab) => {
     setActiveTab(tab);
@@ -565,25 +580,93 @@ export function SearchView() {
           )}
         </div>
 
-        {/* Live Search Suggestions Dropdown (Online only) */}
-        {scope === 'online' && showSuggestions && suggestions.length > 0 && (
-          <div className="absolute left-0 right-0 top-[56px] z-30 rounded-2xl bg-white dark:bg-[#1E1F23] border border-black/10 dark:border-white/10 shadow-2xl overflow-hidden py-1.5">
-            {suggestions.slice(0, 7).map((item) => (
-              <button
-                key={item}
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  void executeSearch(item, activeTab);
-                }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-[14px] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"
-              >
-                <SearchIcon className="w-4 h-4 opacity-45 shrink-0" />
-                <span className="truncate">{item}</span>
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Search History + Live Search Suggestions Dropdown */}
+        {showSuggestions &&
+          (matchingHistory.length > 0 || filteredSuggestions.length > 0) && (
+            <div className="absolute left-0 right-0 top-[56px] z-30 rounded-2xl bg-white dark:bg-[#1E1F23] border border-black/10 dark:border-white/10 shadow-2xl overflow-hidden py-1.5 max-h-[360px] overflow-y-auto">
+              {matchingHistory.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between px-4 py-1.5">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      History Pencarian
+                    </span>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        clearSearchHistory();
+                      }}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-500 hover:text-rose-400"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Hapus Semua
+                    </button>
+                  </div>
+                  {matchingHistory.slice(0, 8).map((term) => (
+                    <div
+                      key={`hist-dd-${term}`}
+                      className="flex items-center gap-2 px-2 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"
+                    >
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          if (scope === 'local') {
+                            setQuery(term);
+                            addSearchHistory(term);
+                            setShowSuggestions(false);
+                          } else {
+                            void executeSearch(term, activeTab);
+                          }
+                        }}
+                        className="flex-1 min-w-0 flex items-center gap-3 px-2 py-2.5 text-left text-[14px]"
+                      >
+                        <Clock className="w-4 h-4 opacity-50 shrink-0" />
+                        <span className="truncate">{term}</span>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Hapus history ${term}`}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          removeSearchHistoryItem(term);
+                        }}
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-black/[0.06] dark:hover:bg-white/10 shrink-0 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {filteredSuggestions.length > 0 && (
+                <div
+                  className={cn(
+                    matchingHistory.length > 0 &&
+                      'border-t border-black/5 dark:border-white/10 mt-1 pt-1'
+                  )}
+                >
+                  {filteredSuggestions.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        void executeSearch(item, activeTab);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-[14px] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"
+                    >
+                      <SearchIcon className="w-4 h-4 opacity-45 shrink-0" />
+                      <span className="truncate">{item}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
       </div>
 
       {/* Category Filter Tabs (only when searching online) */}
@@ -613,14 +696,58 @@ export function SearchView() {
       {scope === 'local' && (
         <div className="space-y-6">
           {showLocalEmptyPrompt ? (
-            <div className="rounded-[28px] metro-surface p-8 text-center space-y-2">
-              <FolderSearch className="w-8 h-8 mx-auto text-[var(--m3-primary)] opacity-80" />
-              <p className="text-base font-bold text-slate-950 dark:text-white">
-                Instant Local Library Search
-              </p>
-              <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                Type a song, artist, album, playlist name, or tag (like &ldquo;Weeknd&rdquo;, &ldquo;Night&rdquo;, or &ldquo;Focus&rdquo;) to filter your offline vault instantly.
-              </p>
+            <div className="space-y-4">
+              <div className="rounded-[28px] metro-surface p-8 text-center space-y-2">
+                <FolderSearch className="w-8 h-8 mx-auto text-[var(--m3-primary)] opacity-80" />
+                <p className="text-base font-bold text-slate-950 dark:text-white">
+                  Instant Local Library Search
+                </p>
+                <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                  Type a song, artist, album, playlist name, or tag (like &ldquo;Weeknd&rdquo;, &ldquo;Night&rdquo;, or &ldquo;Focus&rdquo;) to filter your offline vault instantly.
+                </p>
+              </div>
+              {searchHistory.length > 0 && (
+                <section className="rounded-[24px] metro-surface p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-[14px] font-bold tracking-tight">
+                      History Pencarian
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={clearSearchHistory}
+                      className="inline-flex items-center gap-1 text-[12px] font-medium text-rose-500 hover:text-rose-400"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Hapus Semua
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {searchHistory.map((term) => (
+                      <div
+                        key={`local-hist-${term}`}
+                        className="inline-flex items-center rounded-xl bg-black/[0.04] dark:bg-white/[0.06] pl-3 pr-1 py-1 text-[12.5px] font-medium"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setQuery(term)}
+                          className="inline-flex items-center gap-1.5 hover:text-[var(--m3-primary)] transition-colors"
+                        >
+                          <Clock className="w-3.5 h-3.5 opacity-55" />
+                          <span>{term}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeSearchHistoryItem(term)}
+                          aria-label={`Hapus history ${term}`}
+                          className="ml-1.5 w-6 h-6 rounded-lg flex items-center justify-center opacity-55 hover:opacity-100 hover:text-rose-500 transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
             </div>
           ) : sortedLocalTracks.length === 0 && localResults.playlists.length === 0 ? (
             <div className="rounded-[28px] metro-surface p-8 text-center space-y-1.5">
@@ -744,25 +871,54 @@ export function SearchView() {
         <div className="lg:grid lg:grid-cols-12 lg:gap-7 items-start space-y-6 lg:space-y-0">
           {/* Primary Vibes Column */}
           <section className="lg:col-span-8 space-y-4">
+            {searchHistory.length > 0 && (
+              <section className="lg:hidden rounded-[22px] metro-surface p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[13.5px] font-bold tracking-tight flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-[var(--m3-primary)]" />
+                    History Pencarian
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={clearSearchHistory}
+                    className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-rose-500 hover:text-rose-400"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    Hapus Semua
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {searchHistory.map((term) => (
+                    <div
+                      key={`mobile-hist-${term}`}
+                      className="inline-flex items-center rounded-xl bg-black/[0.04] dark:bg-white/[0.06] pl-2.5 pr-1 py-1 text-[12px] font-medium max-w-full"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => void executeSearch(term, 'all')}
+                        className="inline-flex items-center gap-1.5 min-w-0 hover:text-[var(--m3-primary)] transition-colors"
+                      >
+                        <Clock className="w-3 h-3 opacity-55 shrink-0" />
+                        <span className="truncate max-w-[160px]">{term}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeSearchHistoryItem(term)}
+                        aria-label={`Hapus history ${term}`}
+                        className="ml-1 w-5 h-5 rounded-md flex items-center justify-center opacity-55 hover:opacity-100 hover:text-rose-500 shrink-0 transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
             <div className="flex items-center justify-between gap-2">
               <h1 className="text-[26px] sm:text-[28px] font-bold tracking-tight">
                 Vibes
               </h1>
-              {searchHistory.length > 0 && (
-                <div className="flex lg:hidden items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[65%]">
-                  {searchHistory.slice(0, 3).map((term) => (
-                    <button
-                      key={`quick-hist-${term}`}
-                      type="button"
-                      onClick={() => void executeSearch(term, 'all')}
-                      className="inline-flex items-center gap-1 px-2.5 h-7 rounded-full bg-black/[0.05] dark:bg-white/[0.08] text-[11.5px] font-medium shrink-0 max-w-[110px]"
-                    >
-                      <Clock className="w-3 h-3 opacity-55 shrink-0" />
-                      <span className="truncate">{term}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3 sm:gap-3.5 items-start">
@@ -814,31 +970,43 @@ export function SearchView() {
             </section>
 
             {searchHistory.length > 0 && (
-              <section className="rounded-[26px] metro-surface p-4 space-y-3">
+              <section className="hidden lg:block rounded-[26px] metro-surface p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <h2 className="text-[14px] font-bold tracking-tight">
-                    Recent Searches
+                    History Pencarian
                   </h2>
                   <button
                     type="button"
                     onClick={clearSearchHistory}
-                    className="inline-flex items-center gap-1 text-[12px] font-medium opacity-60 hover:opacity-100 transition-opacity"
+                    className="inline-flex items-center gap-1 text-[12px] font-medium text-rose-500 hover:text-rose-400 transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    Clear
+                    Hapus Semua
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {searchHistory.map((term) => (
-                    <button
+                    <div
                       key={term}
-                      type="button"
-                      onClick={() => void executeSearch(term, 'all')}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] text-[12.5px] font-medium hover:bg-black/[0.08] dark:hover:bg-white/[0.11] transition-colors"
+                      className="inline-flex items-center rounded-xl bg-black/[0.04] dark:bg-white/[0.06] pl-3 pr-1 py-1 text-[12.5px] font-medium hover:bg-black/[0.07] dark:hover:bg-white/[0.09] transition-colors"
                     >
-                      <Clock className="w-3.5 h-3.5 opacity-55" />
-                      {term}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => void executeSearch(term, 'all')}
+                        className="inline-flex items-center gap-1.5 hover:text-[var(--m3-primary)] transition-colors"
+                      >
+                        <Clock className="w-3.5 h-3.5 opacity-55 shrink-0" />
+                        <span>{term}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeSearchHistoryItem(term)}
+                        aria-label={`Hapus history ${term}`}
+                        className="ml-1.5 w-6 h-6 rounded-lg flex items-center justify-center opacity-55 hover:opacity-100 hover:text-rose-500 transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
                   ))}
                 </div>
               </section>

@@ -331,3 +331,35 @@ export function appendRadioContinuation(
     originalQueue: [...state.originalQueue, ...filtered],
   };
 }
+
+/**
+ * Replaces only the upcoming tracks after `currentIndex`, keeping the currently
+ * playing track uninterrupted while refreshing the Up Next list.
+ */
+export function replaceUpcomingQueue(
+  state: QueueState,
+  candidates: Track[],
+  settings: Pick<PlayerSettings, 'hideVideoSongs'>,
+  limit = 20
+): QueueState {
+  if (state.queue.length === 0 || state.currentIndex < 0) {
+    return appendRadioContinuation(state, candidates, settings, limit);
+  }
+
+  const kept = state.queue.slice(0, state.currentIndex + 1);
+  const keptIds = new Set(kept.map((t) => t.videoId));
+  const upcoming = filterTracksByPreferences(candidates, settings)
+    .filter((t) => !keptIds.has(t.videoId))
+    .slice(0, limit);
+
+  const nextQueue = [...kept, ...upcoming];
+  const keptOriginal = state.originalQueue.filter((t) => keptIds.has(t.videoId));
+  const originalIds = new Set(keptOriginal.map((t) => t.videoId));
+  const extraOriginal = upcoming.filter((t) => !originalIds.has(t.videoId));
+
+  return {
+    ...state,
+    queue: nextQueue,
+    originalQueue: [...keptOriginal, ...extraOriginal],
+  };
+}

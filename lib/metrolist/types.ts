@@ -191,10 +191,11 @@ export interface LyricsPayload {
   source: 'lrclib' | 'ytmusic' | 'none';
 }
 
-export type NavTab = 'home' | 'search' | 'charts' | 'library' | 'settings';
+export type NavTab = 'home' | 'search' | 'charts' | 'library' | 'listeners' | 'settings';
 
 export type DetailTarget =
   | { kind: 'album'; id: string; title?: string; thumbnail?: string }
   | { kind: 'playlist'; id: string; title?: string; thumbnail?: string }
   | { kind: 'artist'; id: string; title?: string; thumbnail?: string }
-  | { kind: 'user-playlist'; id: string };
+  | { kind: 'user-playlist'; id: string }
+  | { kind: 'user-profile'; id: string; title?: string; thumbnail?: string };

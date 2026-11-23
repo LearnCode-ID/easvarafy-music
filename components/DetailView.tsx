@@ -18,6 +18,7 @@ import { ArtworkImage } from './ArtworkImage';
 import { useMusic } from './MusicProvider';
 import { DetailViewSkeleton } from './Skeletons';
 import { TrackContextMenu } from './TrackContextMenu';
+import { UserProfileDetail } from './UserProfileDetail';
 import { formatDuration } from '@/lib/metrolist/lyrics';
 import {
   computeTotalDurationSec,
@@ -65,7 +66,11 @@ export function DetailView() {
   const [tagDraft, setTagDraft] = useState('');
 
   useEffect(() => {
-    if (!detailTarget || detailTarget.kind === 'user-playlist') {
+    if (
+      !detailTarget ||
+      detailTarget.kind === 'user-playlist' ||
+      detailTarget.kind === 'user-profile'
+    ) {
       return;
     }
 
@@ -122,6 +127,10 @@ export function DetailView() {
   );
 
   if (!detailTarget) return null;
+
+  if (detailTarget.kind === 'user-profile') {
+    return <UserProfileDetail userId={detailTarget.id} />;
+  }
 
   // User Playlist View (Immersive Adaptive Hero)
   if (detailTarget.kind === 'user-playlist') {

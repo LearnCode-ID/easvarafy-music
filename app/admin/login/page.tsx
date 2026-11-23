@@ -13,6 +13,7 @@ import {
   validateEmail,
 } from '@/components/auth/AuthUI';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { isAdminRole } from '@/lib/auth/types';
 
 /**
  * Admin login: email + password ONLY (no Google button).
@@ -56,8 +57,8 @@ export default function AdminLoginPage() {
     const profile = data.user ? await fetchProfile(data.user.id) : null;
     setLoading(false);
 
-    if (profile?.role !== 'admin') {
-      setFormError('Akun ini bukan admin. Gunakan halaman login user.');
+    if (!isAdminRole(profile?.role)) {
+      setFormError('Akun ini bukan admin atau developer. Gunakan halaman login user.');
       await signOut();
       return;
     }

@@ -11,9 +11,10 @@ import {
   Users,
 } from 'lucide-react';
 import { Badge, EmptyState, StatCard } from '@/components/admin/AdminUI';
+import { VerifiedBadge } from '@/components/auth/VerifiedBadge';
 import { getUserStats, listUsers, type UserStats } from '@/lib/admin/users';
 import type { Profile } from '@/lib/auth/types';
-import { displayNameOf, initialsOf } from '@/lib/auth/types';
+import { displayNameOf, initialsOf, roleLabelOf } from '@/lib/auth/types';
 
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<UserStats | null>(null);
@@ -62,9 +63,9 @@ export default function AdminDashboardPage() {
           tone="primary"
         />
         <StatCard
-          label="Admin"
-          value={loading ? '—' : (stats?.admins ?? 0)}
-          hint="Akses panel admin"
+          label="Admin & Dev"
+          value={loading ? '—' : `${stats?.admins ?? 0} / ${stats?.developers ?? 0}`}
+          hint="Admin (biru) · Developer (kuning)"
           icon={<ShieldCheck className="w-4 h-4" />}
           tone="success"
         />
@@ -122,17 +123,29 @@ export default function AdminDashboardPage() {
                     )}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-semibold truncate">
-                      {displayNameOf(user, user.email)}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-[13px] font-semibold truncate">
+                        {displayNameOf(user, user.email)}
+                      </p>
+                      <VerifiedBadge role={user.role} size="xs" />
+                    </div>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                       {user.email}
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {user.is_banned && <Badge tone="danger">Banned</Badge>}
-                    <Badge tone={user.role === 'admin' ? 'admin' : 'neutral'}>
-                      {user.role === 'admin' ? 'Admin' : 'User'}
+                    <Badge
+                      tone={
+                        user.role === 'developer'
+                          ? 'developer'
+                          : user.role === 'admin'
+                          ? 'admin'
+                          : 'neutral'
+                      }
+                    >
+                      <VerifiedBadge role={user.role} size="xs" />
+                      {roleLabelOf(user.role)}
                     </Badge>
                   </div>
                 </li>

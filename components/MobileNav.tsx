@@ -14,6 +14,7 @@ import {
   Search,
   Settings,
   SkipForward,
+  Trophy,
 } from 'lucide-react';
 import { ArtworkImage } from './ArtworkImage';
 import {
@@ -68,6 +69,23 @@ export function MobileTopBar() {
       {/* Center slot intentionally stays open for the top-center Dynamic Island */}
 
       <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => {
+            openDetail(null);
+            setActiveTab('listeners');
+          }}
+          aria-label="Top Pendengar Bulan Ini"
+          title="Top Pendengar Bulan Ini"
+          className={cn(
+            'min-h-[40px] min-w-[40px] flex items-center justify-center rounded-full transition-colors',
+            activeTab === 'listeners'
+              ? 'text-[var(--m3-primary)] bg-[var(--m3-primary-soft)]'
+              : 'text-slate-600 dark:text-slate-300 hover:bg-black/5 dark:hover:bg-white/10'
+          )}
+        >
+          <Trophy className="w-5 h-5" />
+        </button>
         <MobileAccountButton />
         <button
           type="button"

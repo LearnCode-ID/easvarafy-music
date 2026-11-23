@@ -48,6 +48,12 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 }
 
 try {
+  // Remove stale .next/types so server-only routes moved aside aren't referenced
+  const nextTypesDir = path.join(root, '.next', 'types');
+  if (existsSync(nextTypesDir)) {
+    rmSync(nextTypesDir, { recursive: true, force: true });
+  }
+
   for (const relative of SERVER_ONLY) {
     const original = path.join(root, relative);
     if (!existsSync(original)) continue;

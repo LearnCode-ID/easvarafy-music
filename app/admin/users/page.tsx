@@ -7,12 +7,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Search,
-  ShieldCheck,
-  ShieldOff,
   Trash2,
-  UserCog,
 } from 'lucide-react';
 import { Badge, ConfirmDialog, EmptyState } from '@/components/admin/AdminUI';
+import { VerifiedBadge } from '@/components/auth/VerifiedBadge';
 import {
   deleteUser,
   listUsers,
@@ -20,8 +18,8 @@ import {
   setUserRole,
 } from '@/lib/admin/users';
 import { useAuth } from '@/components/auth/AuthProvider';
-import type { Profile } from '@/lib/auth/types';
-import { displayNameOf, initialsOf } from '@/lib/auth/types';
+import type { Profile, UserRole } from '@/lib/auth/types';
+import { displayNameOf, initialsOf, roleLabelOf } from '@/lib/auth/types';
 import { cn } from '@/lib/utils';
 
 const PER_PAGE = 10;
@@ -45,7 +43,7 @@ export default function AdminUsersPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
-  const [role, setRole] = useState<'all' | 'user' | 'admin'>('all');
+  const [role, setRole] = useState<'all' | UserRole>('all');
   const [status, setStatus] = useState<'all' | 'active' | 'banned'>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,13 +74,13 @@ export default function AdminUsersPage() {
     window.setTimeout(() => setNotice(null), 2600);
   };
 
-  const toggleRole = async (user: Profile) => {
+  const changeRole = async (user: Profile, nextRole: UserRole) => {
+    if (nextRole === user.role) return;
     if (user.id === myId) {
-      flash('Kamu tidak bisa menurunkan role akunmu sendiri.');
+      flash('Kamu tidak bisa mengubah role akunmu sendiri.');
       return;
     }
     setBusyId(user.id);
-    const nextRole = user.role === 'admin' ? 'user' : 'admin';
     const { error: err } = await setUserRole(user.id, nextRole);
     setBusyId(null);
     if (err) {
@@ -93,7 +91,7 @@ export default function AdminUsersPage() {
       prev.map((r) => (r.id === user.id ? { ...r, role: nextRole } : r))
     );
     flash(
-      `${displayNameOf(user, user.email)} sekarang ${nextRole === 'admin' ? 'Admin' : 'User'}.`
+      `${displayNameOf(user, user.email)} sekarang ${roleLabelOf(nextRole)}.`
     );
   };
 
@@ -145,7 +143,7 @@ export default function AdminUsersPage() {
         <div>
           <h1 className="text-[22px] sm:text-[26px] font-bold tracking-tight">Users</h1>
           <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1">
-            Ubah role user ↔ admin, blokir, atau hapus profile.
+            Ubah role user / admin / developer, blokir, atau hapus profile.
           </p>
         </div>
         <span className="text-[11.5px] font-mono-nums text-slate-500 dark:text-slate-400">
@@ -197,6 +195,7 @@ export default function AdminUsersPage() {
             <option value="all">Semua role</option>
             <option value="user">User</option>
             <option value="admin">Admin</option>
+            <option value="developer">Developer</option>
           </select>
           <select
             value={status}
@@ -259,14 +258,17 @@ export default function AdminUsersPage() {
                             )}
                           </span>
                           <div className="min-w-0">
-                            <p className="text-[13px] font-semibold truncate">
-                              {displayNameOf(user, user.email)}
+                            <div className="flex items-center gap-1">
+                              <p className="text-[13px] font-semibold truncate">
+                                {displayNameOf(user, user.email)}
+                              </p>
+                              <VerifiedBadge role={user.role} size="xs" />
                               {isMe && (
-                                <span className="ml-1.5 text-[10px] font-medium text-[var(--m3-primary)]">
+                                <span className="ml-1 text-[10px] font-medium text-[var(--m3-primary)]">
                                   (kamu)
                                 </span>
                               )}
-                            </p>
+                            </div>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                               {user.email ?? '—'}
                             </p>
@@ -274,14 +276,17 @@ export default function AdminUsersPage() {
                         </div>
                       </td>
                       <td className="px-3 py-3">
-                        <Badge tone={user.role === 'admin' ? 'admin' : 'neutral'}>
-                          {user.role === 'admin' ? (
-                            <>
-                              <ShieldCheck className="w-3 h-3" /> Admin
-                            </>
-                          ) : (
-                            'User'
-                          )}
+                        <Badge
+                          tone={
+                            user.role === 'developer'
+                              ? 'developer'
+                              : user.role === 'admin'
+                              ? 'admin'
+                              : 'neutral'
+                          }
+                        >
+                          <VerifiedBadge role={user.role} size="xs" />
+                          {roleLabelOf(user.role)}
                         </Badge>
                       </td>
                       <td className="px-3 py-3">
@@ -293,20 +298,20 @@ export default function AdminUsersPage() {
                         {formatDate(user.created_at)}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => void toggleRole(user)}
+                        <div className="flex items-center justify-end gap-1.5">
+                          <select
+                            value={user.role}
+                            onChange={(e) =>
+                              void changeRole(user, e.target.value as UserRole)
+                            }
                             disabled={busy || isMe}
-                            title={user.role === 'admin' ? 'Jadikan user' : 'Jadikan admin'}
-                            className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-40"
+                            aria-label={`Role untuk ${displayNameOf(user, user.email)}`}
+                            className="h-9 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] px-2.5 text-[11.5px] font-semibold focus:outline-none disabled:opacity-40"
                           >
-                            {user.role === 'admin' ? (
-                              <ShieldOff className="w-4 h-4" />
-                            ) : (
-                              <UserCog className="w-4 h-4" />
-                            )}
-                          </button>
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                            <option value="developer">Developer</option>
+                          </select>
                           <button
                             type="button"
                             onClick={() =>
@@ -363,14 +368,17 @@ export default function AdminUsersPage() {
                       )}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13.5px] font-semibold truncate">
-                        {displayNameOf(user, user.email)}
+                      <div className="flex items-center gap-1">
+                        <p className="text-[13.5px] font-semibold truncate">
+                          {displayNameOf(user, user.email)}
+                        </p>
+                        <VerifiedBadge role={user.role} size="xs" />
                         {isMe && (
-                          <span className="ml-1.5 text-[10px] font-medium text-[var(--m3-primary)]">
+                          <span className="ml-1 text-[10px] font-medium text-[var(--m3-primary)]">
                             (kamu)
                           </span>
                         )}
-                      </p>
+                      </div>
                       <p className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate">
                         {user.email ?? '—'} · {formatDate(user.created_at)}
                       </p>
@@ -378,8 +386,17 @@ export default function AdminUsersPage() {
                   </div>
 
                   <div className="flex items-center gap-1.5 mt-2.5">
-                    <Badge tone={user.role === 'admin' ? 'admin' : 'neutral'}>
-                      {user.role === 'admin' ? 'Admin' : 'User'}
+                    <Badge
+                      tone={
+                        user.role === 'developer'
+                          ? 'developer'
+                          : user.role === 'admin'
+                          ? 'admin'
+                          : 'neutral'
+                      }
+                    >
+                      <VerifiedBadge role={user.role} size="xs" />
+                      {roleLabelOf(user.role)}
                     </Badge>
                     <Badge tone={user.is_banned ? 'danger' : 'success'}>
                       {user.is_banned ? 'Diblokir' : 'Aktif'}
@@ -387,17 +404,22 @@ export default function AdminUsersPage() {
                   </div>
 
                   <div className="grid grid-cols-3 gap-1.5 mt-3">
-                    <button
-                      type="button"
-                      onClick={() => void toggleRole(user)}
+                    <select
+                      value={user.role}
+                      onChange={(e) =>
+                        void changeRole(user, e.target.value as UserRole)
+                      }
                       disabled={busy || isMe}
+                      aria-label={`Role untuk ${displayNameOf(user, user.email)}`}
                       className={cn(
-                        'min-h-[38px] rounded-xl text-[11.5px] font-semibold inline-flex items-center justify-center gap-1',
+                        'min-h-[38px] rounded-xl text-[11.5px] font-semibold px-2',
                         'bg-black/5 dark:bg-white/[0.08] disabled:opacity-40'
                       )}
                     >
-                      {user.role === 'admin' ? 'Jadikan user' : 'Jadikan admin'}
-                    </button>
+                      <option value="user">User</option>
+                      <option value="admin">Admin</option>
+                      <option value="developer">Developer</option>
+                    </select>
                     <button
                       type="button"
                       onClick={() =>

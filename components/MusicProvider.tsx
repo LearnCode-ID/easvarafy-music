@@ -20,6 +20,7 @@ import {
   playTrackInQueue,
   removeFromQueue,
   reorderQueue,
+  replaceUpcomingQueue,
   toggleShuffleQueue,
   type QueueState,
 } from '@/lib/metrolist/queue';
@@ -42,6 +43,16 @@ import {
   computeElapsedWithDrift,
   shouldAutoRecoverBackgroundPlayback,
 } from '@/lib/metrolist/background';
+import {
+  deleteOwnPlaylistFromCloud,
+  fetchOwnCloudLibrary,
+  recordMonthlyPlay,
+  setOwnLikedTrackInCloud,
+  syncMonthlyBaseline,
+  syncOwnAllLikedTracksToCloud,
+  syncOwnAllPlaylistsToCloud,
+  upsertOwnPlaylistToCloud,
+} from '@/lib/social/community';
 import type {
   BackgroundPopupMode,
   DetailTarget,
@@ -105,6 +116,7 @@ interface YTPlayerInstance {
 }
 
 export type NowPlayingTab = 'player' | 'lyrics' | 'queue';
+export type UpNextMode = 'mixed' | 'discover' | 'related' | 'library';
 
 interface MusicContextValue {
   // Navigation
@@ -161,7 +173,11 @@ interface MusicContextValue {
   moveQueueItem: (from: number, to: number) => void;
   toggleShuffle: () => void;
   cycleRepeat: () => void;
-  startRadio: (track: Track) => Promise<void>;
+  startRadio: (track: Track, mode?: UpNextMode) => Promise<void>;
+  refreshUpNext: (mode?: UpNextMode) => Promise<void>;
+  upNextMode: UpNextMode;
+  setUpNextMode: (mode: UpNextMode) => void;
+  upNextRefreshing: boolean;
   jumpToQueueIndex: (idx: number) => void;
 
   // Lyrics
@@ -187,6 +203,7 @@ interface MusicContextValue {
   toggleSaveCollection: (item: Omit<SavedCollectionItem, 'savedAt'>) => void;
   searchHistory: string[];
   addSearchHistory: (query: string) => void;
+  removeSearchHistoryItem: (query: string) => void;
   clearSearchHistory: () => void;
   clearPlayHistory: () => void;
 
@@ -217,7 +234,11 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   // Guest playback is always allowed. Creating playlists / liking / saving
   // requires an account, so those actions route through `requireAuth`, which
   // opens the "Login dulu yuk" popup instead of failing silently.
-  const { requireAuth } = useAuth();
+  const { requireAuth, userId } = useAuth();
+  const userIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    userIdRef.current = userId;
+  }, [userId]);
 
   const [hydrated, setHydrated] = useState(false);
   const [activeTab, setActiveTabState] = useState<NavTab>('home');
@@ -264,6 +285,12 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const lastLoadedVideoIdRef = useRef<string | null>(null);
   const nextTrackRef = useRef<(manual?: boolean) => void>(() => {});
   const radioFetchingRef = useRef<string | null>(null);
+  const [upNextMode, setUpNextModeState] = useState<UpNextMode>('mixed');
+  const [upNextRefreshing, setUpNextRefreshing] = useState(false);
+  const upNextModeRef = useRef<UpNextMode>('mixed');
+  const likedTracksRef = useRef<Track[]>([]);
+  const playlistsRef = useRef<UserPlaylist[]>([]);
+  const historyRef = useRef<PlayEvent[]>([]);
 
   // Background playback refs
   const userPausedRef = useRef(false);
@@ -284,6 +311,22 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
+
+  useEffect(() => {
+    upNextModeRef.current = upNextMode;
+  }, [upNextMode]);
+
+  useEffect(() => {
+    likedTracksRef.current = likedTracks;
+  }, [likedTracks]);
+
+  useEffect(() => {
+    playlistsRef.current = playlists;
+  }, [playlists]);
+
+  useEffect(() => {
+    historyRef.current = history;
+  }, [history]);
 
   useEffect(() => {
     popupModeRef.current = popupMode;
@@ -411,6 +454,83 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       active = false;
     };
   }, []);
+
+  // Sync signed-in user's playlists, liked tracks & monthly baseline with Supabase
+  const cloudSyncedUserRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!hydrated || !userId) {
+      if (!userId) cloudSyncedUserRef.current = null;
+      return;
+    }
+    if (cloudSyncedUserRef.current === userId) return;
+    cloudSyncedUserRef.current = userId;
+    let cancelled = false;
+
+    const runCloudSync = async () => {
+      const localState = loadLibraryState();
+      if (localState.history.length > 0) {
+        void syncMonthlyBaseline(localState.history);
+      }
+
+      const cloud = await fetchOwnCloudLibrary(userId);
+      if (cancelled || !cloud.ok) return;
+
+      // Merge playlists by id (keep whichever has newer updatedAt)
+      const playlistMap = new Map<string, UserPlaylist>();
+      for (const pl of cloud.playlists) {
+        playlistMap.set(pl.id, pl);
+      }
+      const localOnlyPlaylists: UserPlaylist[] = [];
+      for (const pl of localState.playlists) {
+        if (!pl.id || pl.id === 'login-required') continue;
+        const existing = playlistMap.get(pl.id);
+        if (!existing) {
+          playlistMap.set(pl.id, pl);
+          localOnlyPlaylists.push(pl);
+        } else if ((pl.updatedAt || 0) > (existing.updatedAt || 0)) {
+          playlistMap.set(pl.id, pl);
+          localOnlyPlaylists.push(pl);
+        }
+      }
+      if (localOnlyPlaylists.length > 0) {
+        void syncOwnAllPlaylistsToCloud(userId, localOnlyPlaylists);
+      }
+      const mergedPlaylists = Array.from(playlistMap.values()).sort(
+        (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)
+      );
+      if (!cancelled && mergedPlaylists.length > 0) {
+        setPlaylists(mergedPlaylists);
+        savePlaylists(mergedPlaylists);
+      }
+
+      // Merge liked tracks by videoId
+      const likedMap = new Map<string, Track>();
+      for (const t of localState.likedTracks) {
+        if (t?.videoId) likedMap.set(t.videoId, t);
+      }
+      const localOnlyLikes = localState.likedTracks.filter(
+        (t) => t?.videoId && !cloud.likedTracks.some((c) => c.videoId === t.videoId)
+      );
+      for (const t of cloud.likedTracks) {
+        if (t?.videoId && !likedMap.has(t.videoId)) {
+          likedMap.set(t.videoId, t);
+        }
+      }
+      if (localOnlyLikes.length > 0) {
+        void syncOwnAllLikedTracksToCloud(userId, localOnlyLikes);
+      }
+      const mergedLiked = Array.from(likedMap.values());
+      if (!cancelled && mergedLiked.length > 0) {
+        setLikedTracks(mergedLiked);
+        saveLikedTracks(mergedLiked);
+      }
+    };
+
+    void runCloudSync();
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, userId]);
 
   // Sync Metrolist dark/light, Pure Black AMOLED class & Material 3 dynamic CSS variables on <html>
   useEffect(() => {
@@ -598,6 +718,96 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     }
   }, [resumePlaybackKeepAlive, showToast]);
 
+  const collectPersonalUpNextPool = useCallback((excludeVideoId: string): Track[] => {
+    const pool: Track[] = [];
+    const seen = new Set<string>([excludeVideoId]);
+    const pushIfNew = (t: Track | undefined) => {
+      if (!t?.videoId || seen.has(t.videoId)) return;
+      seen.add(t.videoId);
+      pool.push(t);
+    };
+
+    for (const t of likedTracksRef.current) pushIfNew(t);
+    for (const pl of playlistsRef.current) {
+      for (const t of pl.tracks) pushIfNew(t);
+    }
+    for (const evt of historyRef.current) pushIfNew(evt.track);
+
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    return pool;
+  }, []);
+
+  const buildUpNextCandidates = useCallback(
+    async (seedTrack: Track, mode: UpNextMode): Promise<Track[]> => {
+      const personalPool = collectPersonalUpNextPool(seedTrack.videoId);
+      const apiMode =
+        mode === 'related'
+          ? 'related'
+          : mode === 'discover' || mode === 'library'
+          ? 'discover'
+          : 'mixed';
+
+      let remoteTracks: Track[] = [];
+      if (mode !== 'library' || personalPool.length < 12) {
+        try {
+          const headers: Record<string, string> = {};
+          if (settingsRef.current.ytCookie.trim()) {
+            headers['x-yt-cookie'] = settingsRef.current.ytCookie.trim();
+          }
+          const res = await fetch(
+            apiUrl(
+              `/api/music/up-next?videoId=${encodeURIComponent(
+                seedTrack.videoId
+              )}&gl=${settingsRef.current.region}&mode=${apiMode}`
+            ),
+            { headers }
+          );
+          if (res.ok) {
+            const data = (await res.json()) as { tracks?: Track[] };
+            remoteTracks = data.tracks ?? [];
+          }
+        } catch {
+          // fallback to personalPool
+        }
+      }
+
+      if (mode === 'library') {
+        return [...personalPool, ...remoteTracks].slice(0, 24);
+      }
+
+      if (mode === 'discover' || mode === 'related') {
+        return remoteTracks.slice(0, 24);
+      }
+
+      // 'mixed': interleave remote (related + discovery/trending) with user's own library favorites
+      const mixed: Track[] = [];
+      const seen = new Set<string>([seedTrack.videoId]);
+      let rIdx = 0;
+      let pIdx = 0;
+      while (mixed.length < 24 && (rIdx < remoteTracks.length || pIdx < personalPool.length)) {
+        for (let k = 0; k < 2 && rIdx < remoteTracks.length && mixed.length < 24; k++) {
+          const candidate = remoteTracks[rIdx++];
+          if (candidate?.videoId && !seen.has(candidate.videoId)) {
+            seen.add(candidate.videoId);
+            mixed.push(candidate);
+          }
+        }
+        if (pIdx < personalPool.length && mixed.length < 24) {
+          const candidate = personalPool[pIdx++];
+          if (candidate?.videoId && !seen.has(candidate.videoId)) {
+            seen.add(candidate.videoId);
+            mixed.push(candidate);
+          }
+        }
+      }
+      return mixed;
+    },
+    [collectPersonalUpNextPool]
+  );
+
   // Load new track into YT Player + fetch synced lyrics + auto-radio prefetch
   useEffect(() => {
     if (!currentTrack) return;
@@ -637,6 +847,10 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         return updated;
       });
 
+      if (userIdRef.current) {
+        void recordMonthlyPlay(currentTrack);
+      }
+
       // Fetch Lyrics
       setLyricsLoading(true);
       const params = new URLSearchParams({
@@ -658,22 +872,22 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         if (!cancelled) setLyricsLoading(false);
       }
 
-      // Metrolist Auto-Continue Radio: prefetch Up Nexts when near end of queue
+      // Auto-Continue Up Next: prefetch diverse mixed/discovery/library tracks when near end of queue
       const remaining = queueState.queue.length - 1 - queueState.currentIndex;
       if (
         settings.autoContinueRadio &&
-        remaining <= 1 &&
+        remaining <= 2 &&
         radioFetchingRef.current !== currentTrack.videoId
       ) {
         radioFetchingRef.current = currentTrack.videoId;
         try {
-          const res = await fetch(
-            apiUrl(`/api/music/up-next?videoId=${encodeURIComponent(currentTrack.videoId)}&gl=${settings.region}`)
+          const candidates = await buildUpNextCandidates(
+            currentTrack,
+            upNextModeRef.current
           );
-          const data = (await res.json()) as { tracks?: Track[] };
-          if (!cancelled && data.tracks && data.tracks.length > 0) {
+          if (!cancelled && candidates.length > 0) {
             setQueueState((prev) =>
-              appendRadioContinuation(prev, data.tracks!, settings, 12)
+              appendRadioContinuation(prev, candidates, settingsRef.current, 16)
             );
           }
         } catch {
@@ -1115,24 +1329,56 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const startRadio = useCallback(
-    async (track: Track) => {
+    async (track: Track, mode?: UpNextMode) => {
+      const targetMode = mode ?? upNextModeRef.current;
       playTrack(track, [track]);
-      showToast(`Starting radio from "${track.title}"`);
+      showToast(`Memulai Up Next dari "${track.title}"`);
+      setUpNextRefreshing(true);
       try {
-        const res = await fetch(
-          apiUrl(`/api/music/up-next?videoId=${encodeURIComponent(track.videoId)}&gl=${settings.region}`)
-        );
-        const data = (await res.json()) as { tracks?: Track[] };
-        if (data.tracks && data.tracks.length > 0) {
+        const candidates = await buildUpNextCandidates(track, targetMode);
+        if (candidates.length > 0) {
           setQueueState((prev) =>
-            appendRadioContinuation(prev, data.tracks!, settings, 20)
+            appendRadioContinuation(prev, candidates, settingsRef.current, 20)
           );
         }
       } catch {
         // ignore
+      } finally {
+        setUpNextRefreshing(false);
       }
     },
-    [playTrack, settings, showToast]
+    [buildUpNextCandidates, playTrack, showToast]
+  );
+
+  const refreshUpNext = useCallback(
+    async (mode?: UpNextMode) => {
+      const seed = getCurrentTrack(queueState);
+      if (!seed) return;
+      const targetMode = mode ?? upNextModeRef.current;
+      setUpNextRefreshing(true);
+      try {
+        const candidates = await buildUpNextCandidates(seed, targetMode);
+        if (candidates.length > 0) {
+          setQueueState((prev) =>
+            replaceUpcomingQueue(prev, candidates, settingsRef.current, 20)
+          );
+        }
+      } catch {
+        // ignore
+      } finally {
+        setUpNextRefreshing(false);
+      }
+    },
+    [buildUpNextCandidates, queueState]
+  );
+
+  const setUpNextMode = useCallback(
+    (mode: UpNextMode) => {
+      upNextModeRef.current = mode;
+      setUpNextModeState(mode);
+      void refreshUpNext(mode);
+    },
+    [refreshUpNext]
   );
 
   const setSleepTimer = useCallback(
@@ -1182,11 +1428,12 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
           ? prev.filter((t) => t.videoId !== track.videoId)
           : [track, ...prev];
         saveLikedTracks(next);
+        if (userId) void setOwnLikedTrackInCloud(userId, track, !exists);
         showToast(exists ? 'Removed from Liked Songs' : 'Added to Liked Songs');
         return next;
       });
     },
-    [requireAuth, showToast]
+    [requireAuth, showToast, userId]
   );
 
   const createPlaylist = useCallback(
@@ -1215,23 +1462,31 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         savePlaylists(next);
         return next;
       });
+      if (userId) void upsertOwnPlaylistToCloud(userId, created);
       showToast(`Created playlist "${created.name}"`);
       return created;
     },
-    [requireAuth, showToast]
+    [requireAuth, showToast, userId]
   );
 
-  const renamePlaylist = useCallback((id: string, name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    setPlaylists((prev) => {
-      const next = prev.map((pl) =>
-        pl.id === id ? { ...pl, name: trimmed, updatedAt: Date.now() } : pl
-      );
-      savePlaylists(next);
-      return next;
-    });
-  }, []);
+  const renamePlaylist = useCallback(
+    (id: string, name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      setPlaylists((prev) => {
+        let updatedPl: UserPlaylist | null = null;
+        const next = prev.map((pl) => {
+          if (pl.id !== id) return pl;
+          updatedPl = { ...pl, name: trimmed, updatedAt: Date.now() };
+          return updatedPl;
+        });
+        savePlaylists(next);
+        if (userId && updatedPl) void upsertOwnPlaylistToCloud(userId, updatedPl);
+        return next;
+      });
+    },
+    [userId]
+  );
 
   const updatePlaylistTags = useCallback(
     (playlistId: string, tags: string[]) => {
@@ -1244,17 +1499,19 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         )
       );
       setPlaylists((prev) => {
-        const next = prev.map((pl) =>
-          pl.id === playlistId
-            ? { ...pl, tags: normalized, updatedAt: Date.now() }
-            : pl
-        );
+        let updatedPl: UserPlaylist | null = null;
+        const next = prev.map((pl) => {
+          if (pl.id !== playlistId) return pl;
+          updatedPl = { ...pl, tags: normalized, updatedAt: Date.now() };
+          return updatedPl;
+        });
         savePlaylists(next);
+        if (userId && updatedPl) void upsertOwnPlaylistToCloud(userId, updatedPl);
         return next;
       });
       showToast('Playlist tags updated');
     },
-    [showToast]
+    [showToast, userId]
   );
 
   const deletePlaylist = useCallback(
@@ -1264,28 +1521,32 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         savePlaylists(next);
         return next;
       });
+      if (userId) void deleteOwnPlaylistFromCloud(userId, id);
       if (detailTarget?.kind === 'user-playlist' && detailTarget.id === id) {
         setDetailTarget(null);
       }
       showToast('Playlist deleted');
     },
-    [detailTarget, showToast]
+    [detailTarget, showToast, userId]
   );
 
   const addTrackToPlaylist = useCallback(
     (playlistId: string, track: Track) => {
       if (!requireAuth('Login dulu yuk biar bisa nyimpen lagu ke playlist.')) return;
       setPlaylists((prev) => {
+        let updatedPl: UserPlaylist | null = null;
         const next = prev.map((pl) => {
           if (pl.id !== playlistId) return pl;
           if (pl.tracks.some((t) => t.videoId === track.videoId)) return pl;
-          return {
+          updatedPl = {
             ...pl,
             updatedAt: Date.now(),
             tracks: [...pl.tracks, track],
           };
+          return updatedPl;
         });
         savePlaylists(next);
+        if (userId && updatedPl) void upsertOwnPlaylistToCloud(userId, updatedPl);
         return next;
       });
       const targetPl = playlists.find((p) => p.id === playlistId);
@@ -1293,26 +1554,28 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         targetPl ? `Saved to "${targetPl.name}"` : 'Added track to playlist'
       );
     },
-    [playlists, requireAuth, showToast]
+    [playlists, requireAuth, showToast, userId]
   );
 
   const removeTrackFromPlaylist = useCallback(
     (playlistId: string, videoId: string) => {
       setPlaylists((prev) => {
-        const next = prev.map((pl) =>
-          pl.id === playlistId
-            ? {
-                ...pl,
-                updatedAt: Date.now(),
-                tracks: pl.tracks.filter((t) => t.videoId !== videoId),
-              }
-            : pl
-        );
+        let updatedPl: UserPlaylist | null = null;
+        const next = prev.map((pl) => {
+          if (pl.id !== playlistId) return pl;
+          updatedPl = {
+            ...pl,
+            updatedAt: Date.now(),
+            tracks: pl.tracks.filter((t) => t.videoId !== videoId),
+          };
+          return updatedPl;
+        });
         savePlaylists(next);
+        if (userId && updatedPl) void upsertOwnPlaylistToCloud(userId, updatedPl);
         return next;
       });
     },
-    []
+    [userId]
   );
 
   const isSavedInCollection = useCallback(
@@ -1343,7 +1606,16 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     const trimmed = query.trim();
     if (!trimmed) return;
     setSearchHistory((prev) => {
-      const next = [trimmed, ...prev.filter((q) => q.toLowerCase() !== trimmed.toLowerCase())].slice(0, 12);
+      const next = [trimmed, ...prev.filter((q) => q.toLowerCase() !== trimmed.toLowerCase())].slice(0, 15);
+      saveSearchHistory(next);
+      return next;
+    });
+  }, []);
+
+  const removeSearchHistoryItem = useCallback((query: string) => {
+    const target = query.trim().toLowerCase();
+    setSearchHistory((prev) => {
+      const next = prev.filter((q) => q.trim().toLowerCase() !== target);
       saveSearchHistory(next);
       return next;
     });
@@ -1352,7 +1624,8 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const clearSearchHistory = useCallback(() => {
     setSearchHistory([]);
     saveSearchHistory([]);
-  }, []);
+    showToast('History pencarian dihapus');
+  }, [showToast]);
 
   const clearPlayHistory = useCallback(() => {
     setHistory([]);
@@ -1422,12 +1695,14 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
           const validLiked = parsed.likedTracks as Track[];
           setLikedTracks(validLiked);
           saveLikedTracks(validLiked);
+          if (userId) void syncOwnAllLikedTracksToCloud(userId, validLiked);
           importedCount += validLiked.length;
         }
         if (Array.isArray(parsed.playlists)) {
           const validPlaylists = parsed.playlists as UserPlaylist[];
           setPlaylists(validPlaylists);
           savePlaylists(validPlaylists);
+          if (userId) void syncOwnAllPlaylistsToCloud(userId, validPlaylists);
           importedCount += validPlaylists.length;
         }
         if (Array.isArray(parsed.savedCollection)) {
@@ -1461,7 +1736,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         return { ok: false, message: 'Could not parse backup file' };
       }
     },
-    [showToast]
+    [showToast, userId]
   );
 
   const value: MusicContextValue = {
@@ -1510,6 +1785,10 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     toggleShuffle,
     cycleRepeat,
     startRadio,
+    refreshUpNext,
+    upNextMode,
+    setUpNextMode,
+    upNextRefreshing,
     jumpToQueueIndex,
     lyrics,
     lyricsLoading,
@@ -1531,6 +1810,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     toggleSaveCollection,
     searchHistory,
     addSearchHistory,
+    removeSearchHistoryItem,
     clearSearchHistory,
     clearPlayHistory,
     settings,
