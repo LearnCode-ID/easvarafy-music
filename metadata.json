@@ -1,0 +1,8 @@
+{
+  "name": "Easvarafy — Dengerin Musik Tanpa Batas",
+  "description": "Easvarafy — Dengerin Musik Tanpa Batas. Pemutar musik modern dengan lirik sinkron, equalizer, playlist, dan sleep timer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
