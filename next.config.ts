@@ -12,9 +12,6 @@ const isStaticExport = process.env.NEXT_STATIC_EXPORT === 'true';
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   devIndicators: false,
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   typescript: {
     ignoreBuildErrors: false,
   },
@@ -59,6 +56,7 @@ const nextConfig: NextConfig = {
   output: isStaticExport ? 'export' : 'standalone',
   trailingSlash: true,
   transpilePackages: ['motion'],
+  turbopack: {},
   webpack: (config, { dev }) => {
     if (dev && process.env.DISABLE_HMR === 'true') {
       config.watchOptions = {
