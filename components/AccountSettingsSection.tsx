@@ -16,15 +16,15 @@ import {
   LogIn,
   LogOut,
   Mail,
-  ShieldCheck,
   Trash2,
   User as UserIcon,
   UserPlus,
 } from 'lucide-react';
 import { useAuth } from './auth/AuthProvider';
 import { AccountAvatar } from './auth/AccountMenu';
+import { VerifiedBadge } from './auth/VerifiedBadge';
 import { useMusic } from './MusicProvider';
-import { displayNameOf } from '@/lib/auth/types';
+import { displayNameOf, roleLabelOf } from '@/lib/auth/types';
 
 export function AccountSettingsSection() {
   const router = useRouter();
@@ -32,6 +32,7 @@ export function AccountSettingsSection() {
     ready,
     configured,
     isAuthenticated,
+    userId,
     profile,
     email,
     isAdmin,
@@ -42,7 +43,7 @@ export function AccountSettingsSection() {
     sendPasswordReset,
     signOut,
   } = useAuth();
-  const { showToast } = useMusic();
+  const { showToast, openDetail } = useMusic();
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -291,25 +292,41 @@ export function AccountSettingsSection() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-[16px] font-bold truncate">{displayLabel}</p>
+                    <VerifiedBadge role={profile?.role} size="md" />
                     <span
                       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                        isAdmin
-                          ? 'bg-[var(--m3-primary)]/15 text-[var(--m3-primary)]'
+                        profile?.role === 'developer'
+                          ? 'bg-amber-500/15 text-amber-400'
+                          : profile?.role === 'admin'
+                          ? 'bg-sky-500/15 text-sky-400'
                           : 'bg-black/[0.06] dark:bg-white/[0.08] opacity-75'
                       }`}
                     >
-                      {isAdmin && <ShieldCheck className="w-3 h-3" />}
-                      {isAdmin ? 'Admin' : 'Member'}
+                      <VerifiedBadge role={profile?.role} size="xs" />
+                      {roleLabelOf(profile?.role)}
                     </span>
                   </div>
                   <p className="text-[12.5px] opacity-65 truncate mt-0.5">
                     {email ?? '—'}
                   </p>
-                  {joinedLabel && (
-                    <p className="text-[11.5px] opacity-50 mt-0.5">
-                      Bergabung {joinedLabel}
-                    </p>
-                  )}
+                  <div className="flex items-center gap-3 flex-wrap mt-0.5">
+                    {joinedLabel && (
+                      <p className="text-[11.5px] opacity-50">
+                        Bergabung {joinedLabel}
+                      </p>
+                    )}
+                    {userId && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openDetail({ kind: 'user-profile', id: userId, title: displayLabel })
+                        }
+                        className="text-[11.5px] font-semibold text-[var(--m3-primary)] hover:underline"
+                      >
+                        Lihat Profil Publik →
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 

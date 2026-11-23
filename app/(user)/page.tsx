@@ -7,6 +7,7 @@ import { DynamicIsland } from '@/components/DynamicIsland';
 import { DynamicIslandPopup } from '@/components/DynamicIslandPopup';
 import { HomeView } from '@/components/HomeView';
 import { LibraryView } from '@/components/LibraryView';
+import { ListenersView } from '@/components/ListenersView';
 import { LiquidGlassFilterDefs } from '@/components/LiquidGlassSurface';
 import { MiniPlayer } from '@/components/MiniPlayer';
 import { MobileBottomTabs, MobileTopBar } from '@/components/MobileNav';
@@ -67,6 +68,8 @@ function EasvarafyShell() {
             <ChartsView />
           ) : activeTab === 'library' ? (
             <LibraryView />
+          ) : activeTab === 'listeners' ? (
+            <ListenersView />
           ) : (
             <SettingsView />
           )}

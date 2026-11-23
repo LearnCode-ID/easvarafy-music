@@ -1,4 +1,4 @@
-export type UserRole = 'user' | 'admin';
+export type UserRole = 'user' | 'admin' | 'developer';
 
 export interface Profile {
   id: string;
@@ -16,7 +16,13 @@ export interface AuthUser {
 }
 
 export function isAdminRole(role: string | null | undefined): boolean {
-  return role === 'admin';
+  return role === 'admin' || role === 'developer';
+}
+
+export function roleLabelOf(role: string | null | undefined): string {
+  if (role === 'admin') return 'Admin';
+  if (role === 'developer') return 'Developer';
+  return 'Member';
 }
 
 export function displayNameOf(profile: Profile | null, fallbackEmail?: string | null): string {

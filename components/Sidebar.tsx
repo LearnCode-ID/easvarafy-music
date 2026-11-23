@@ -9,6 +9,7 @@ import {
   Plus,
   Search,
   Settings,
+  Trophy,
 } from 'lucide-react';
 import { useMusic } from './MusicProvider';
 import { SidebarAccount } from './auth/AccountMenu';
@@ -20,6 +21,7 @@ const NAV_ITEMS: Array<{ id: NavTab; label: string; icon: React.ComponentType<{ 
   { id: 'search', label: 'Search', icon: Search },
   { id: 'charts', label: 'Explore', icon: Compass },
   { id: 'library', label: 'Library', icon: Library },
+  { id: 'listeners', label: 'Top Pendengar', icon: Trophy },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 

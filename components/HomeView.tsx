@@ -29,6 +29,7 @@ import {
   TopPicksCollageSection,
   ViralHitsCompactSection,
 } from './HomeEditorialSections';
+import { HomeTopListenersSection } from './HomeTopListenersSection';
 import {
   HomeShelvesSkeleton,
   QuickPicksSkeleton,
@@ -1065,6 +1066,9 @@ export function HomeView() {
               </div>
             </section>
           )}
+
+          {/* 6b. Monthly Top Listeners Spotlight */}
+          <HomeTopListenersSection />
 
           {/* 7. Live YouTube Music Shelves (Varied Visual Rhythm: Artists = Circles, Albums/Playlists = Showcase) */}
           {loading && !homeData ? (

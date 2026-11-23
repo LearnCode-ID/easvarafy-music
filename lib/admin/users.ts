@@ -4,6 +4,7 @@ import type { Profile, UserRole } from '@/lib/auth/types';
 export interface UserStats {
   total: number;
   admins: number;
+  developers: number;
   banned: number;
   new_7d: number;
   new_30d: number;
@@ -72,7 +73,14 @@ export async function listUsers({
 }
 
 export async function getUserStats(): Promise<{ stats: UserStats; error?: string }> {
-  const empty: UserStats = { total: 0, admins: 0, banned: 0, new_7d: 0, new_30d: 0 };
+  const empty: UserStats = {
+    total: 0,
+    admins: 0,
+    developers: 0,
+    banned: 0,
+    new_7d: 0,
+    new_30d: 0,
+  };
   if (!isSupabaseConfigured) return { stats: empty, error: 'Supabase belum dikonfigurasi.' };
 
   const { data, error } = await supabase.rpc('admin_user_stats');
@@ -86,6 +94,7 @@ export async function getUserStats(): Promise<{ stats: UserStats; error?: string
       stats: {
         total: rows.length,
         admins: rows.filter((r) => r.role === 'admin').length,
+        developers: rows.filter((r) => r.role === 'developer').length,
         banned: rows.filter((r) => r.is_banned).length,
         new_7d: rows.filter((r) => now - new Date(r.created_at).getTime() < week).length,
         new_30d: rows.filter((r) => now - new Date(r.created_at).getTime() < week * 4).length,
@@ -98,6 +107,7 @@ export async function getUserStats(): Promise<{ stats: UserStats; error?: string
     stats: {
       total: Number(raw.total ?? 0),
       admins: Number(raw.admins ?? 0),
+      developers: Number(raw.developers ?? 0),
       banned: Number(raw.banned ?? 0),
       new_7d: Number(raw.new_7d ?? 0),
       new_30d: Number(raw.new_30d ?? 0),

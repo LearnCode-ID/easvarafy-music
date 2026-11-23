@@ -26,7 +26,7 @@ import {
   onNativeAuthCallback,
   passwordResetRedirectUrl,
 } from '@/lib/auth/native';
-import type { Profile, UserRole } from '@/lib/auth/types';
+import { isAdminRole, type Profile, type UserRole } from '@/lib/auth/types';
 import { LoginPromptDialog } from './LoginPromptDialog';
 
 interface AuthResult {
@@ -399,7 +399,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email,
       profile,
       role: profile?.role ?? (isAuthenticated ? 'user' : null),
-      isAdmin: profile?.role === 'admin',
+      isAdmin: isAdminRole(profile?.role),
       isBanned: Boolean(profile?.is_banned),
       isAuthenticated,
       refreshProfile,
