@@ -3,6 +3,7 @@ name: Build Android APK
 on:
   push:
     branches: [main]
+    tags: ['v*']
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -11,6 +12,9 @@ on:
 concurrency:
   group: apk-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: write
 
 jobs:
   build-apk:
@@ -92,3 +96,43 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish GitHub Release
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK_SRC="android/app/build/outputs/apk/debug/app-debug.apk"
+          if [ ! -f "$APK_SRC" ]; then
+            echo "::error::APK not found at $APK_SRC"
+            exit 1
+          fi
+
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="v${PKG_VERSION}-build.${{ github.run_number }}"
+          fi
+
+          mkdir -p release-assets
+          APK_ASSET="release-assets/easvarafy-music.apk"
+          cp "$APK_SRC" "$APK_ASSET"
+          SHA256=$(sha256sum "$APK_ASSET" | awk '{print $1}')
+
+          NOTES=$(printf '%s\n' \
+            "Android APK build from \`${{ github.ref_name }}\` (\`${{ github.sha }}\`)." \
+            "" \
+            "- **Version:** \`${PKG_VERSION}\` (Build \`#${{ github.run_number }}\`)" \
+            "- **Asset:** \`easvarafy-music.apk\`" \
+            "- **SHA-256:** \`${SHA256}\`")
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK_ASSET" --clobber
+          else
+            gh release create "$TAG" "$APK_ASSET" \
+              --title "Easvarafy Music ${TAG}" \
+              --notes "$NOTES" \
+              --target "${{ github.sha }}" \
+              --latest
+          fi
