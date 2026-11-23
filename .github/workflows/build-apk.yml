@@ -61,6 +61,8 @@ jobs:
           fi
           npx cap sync android
           node scripts/configure-android.mjs
+          node scripts/generate-android-icons.mjs
+          npx @capacitor/assets generate --android --iconBackgroundColor '#000000' --splashBackgroundColor '#000000' --splashBackgroundColorDark '#000000'
 
       - name: Setup JDK 21
         uses: actions/setup-java@v5

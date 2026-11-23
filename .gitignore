@@ -8,4 +8,5 @@ coverage/
 .static-export-stash/
 out/
 android/
+assets/
 tsconfig.tsbuildinfo
