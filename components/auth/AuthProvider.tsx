@@ -11,7 +11,14 @@ import React, {
 } from 'react';
 import { useRouter } from 'next/navigation';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
-import { ensureProfile, fetchProfile, homeForRole } from '@/lib/auth/profile';
+import {
+  ensureProfile,
+  fetchProfile,
+  homeForRole,
+  removeOwnAvatar,
+  updateOwnProfile,
+  uploadOwnAvatar,
+} from '@/lib/auth/profile';
 import {
   closeAuthBrowser,
   isNativeApp,
@@ -40,6 +47,9 @@ interface AuthContextValue {
   /** True when a signed-in session exists (guest playback stays allowed without it). */
   isAuthenticated: boolean;
   refreshProfile: () => Promise<Profile | null>;
+  updateProfile: (patch: { name?: string; avatar_url?: string | null }) => Promise<AuthResult>;
+  uploadAvatar: (file: File) => Promise<AuthResult>;
+  removeAvatar: () => Promise<AuthResult>;
   signInWithEmail: (email: string, password: string) => Promise<AuthResult>;
   signUpWithEmail: (params: {
     name: string;
@@ -133,6 +143,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const next = await loadProfile(userId);
     return next;
   }, [loadProfile, userId]);
+
+  const updateProfile = useCallback(
+    async (patch: { name?: string; avatar_url?: string | null }): Promise<AuthResult> => {
+      const result = await updateOwnProfile(patch);
+      if (result.error) return { error: result.error };
+      if (result.profile !== undefined) {
+        setProfile(result.profile);
+      } else {
+        await refreshProfile();
+      }
+      return {};
+    },
+    [refreshProfile]
+  );
+
+  const uploadAvatar = useCallback(
+    async (file: File): Promise<AuthResult> => {
+      const result = await uploadOwnAvatar(file);
+      if (result.error) return { error: result.error };
+      if (result.profile !== undefined) {
+        setProfile(result.profile);
+      } else {
+        await refreshProfile();
+      }
+      return {};
+    },
+    [refreshProfile]
+  );
+
+  const removeAvatar = useCallback(async (): Promise<AuthResult> => {
+    const result = await removeOwnAvatar();
+    if (result.error) return { error: result.error };
+    if (result.profile !== undefined) {
+      setProfile(result.profile);
+    } else {
+      await refreshProfile();
+    }
+    return {};
+  }, [refreshProfile]);
 
   // Bootstrap session + subscribe to auth changes.
   useEffect(() => {
@@ -354,6 +403,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isBanned: Boolean(profile?.is_banned),
       isAuthenticated,
       refreshProfile,
+      updateProfile,
+      uploadAvatar,
+      removeAvatar,
       signInWithEmail,
       signUpWithEmail,
       signInWithGoogle,
@@ -370,6 +422,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       profile,
       isAuthenticated,
       refreshProfile,
+      updateProfile,
+      uploadAvatar,
+      removeAvatar,
       signInWithEmail,
       signUpWithEmail,
       signInWithGoogle,

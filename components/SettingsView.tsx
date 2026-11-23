@@ -9,7 +9,6 @@ import {
   Check,
   Database,
   Download,
-  ExternalLink,
   Eye,
   EyeOff,
   FastForward,
@@ -22,12 +21,10 @@ import {
   Info,
   KeyRound,
   Layers,
-  MessageCircle,
   MessageSquareQuote,
   Minus,
   Moon,
   MoonStar,
-  Music2,
   Palette,
   PauseCircle,
   PictureInPicture2,
@@ -35,7 +32,6 @@ import {
   Radio,
   RotateCcw,
   Search as SearchIcon,
-  Send,
   Shapes,
   SlidersHorizontal,
   Sparkles,
@@ -45,12 +41,13 @@ import {
   Trash2,
   Type,
   Upload,
-  Users,
+  User,
   VideoOff,
   Waves,
   X,
 } from 'lucide-react';
 import { useMusic } from './MusicProvider';
+import { AccountSettingsSection } from './AccountSettingsSection';
 import { LyricsSettingsPreview } from './SyncedLyricsView';
 import { EQUALIZER_PRESETS } from '@/lib/metrolist/statsEngine';
 import { METROLIST_ACCENT_PALETTES } from '@/lib/metrolist/theme';
@@ -70,12 +67,12 @@ import type {
 
 type SettingsCategory =
   | 'all'
+  | 'account'
   | 'appearance'
   | 'lyrics'
   | 'player'
   | 'content'
   | 'storage'
-  | 'community'
   | 'about';
 
 const REGIONS: { code: ContentRegion; label: string; native: string }[] = [
@@ -170,12 +167,12 @@ const CATEGORIES: {
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
   { id: 'all', label: 'All', icon: SlidersHorizontal },
+  { id: 'account', label: 'Akun', icon: User },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'lyrics', label: 'Lyrics', icon: MessageSquareQuote },
   { id: 'player', label: 'Player & Audio', icon: Headphones },
   { id: 'content', label: 'Content', icon: Globe },
   { id: 'storage', label: 'Storage', icon: Database },
-  { id: 'community', label: 'Community', icon: Users },
   { id: 'about', label: 'About', icon: Info },
 ];
 
@@ -436,6 +433,12 @@ export function SettingsView() {
           </div>
         )}
       </div>
+
+      {/* 0. ACCOUNT SETTINGS */}
+      {showSection(
+        'account',
+        'account akun profil profile avatar foto nama panggilan nickname display name email password sandi keluar logout'
+      ) && <AccountSettingsSection />}
 
       {/* 1. APPEARANCE */}
       {showSection(
@@ -1944,109 +1947,7 @@ export function SettingsView() {
         </section>
       )}
 
-      {/* 5. DEVELOPER COMMUNITY */}
-      {showSection(
-        'community',
-        'community komunitas developer saluran whatsapp tiktok telegram sannforum sann404 forum group'
-      ) && (
-        <section data-testid="developer-community" className="space-y-2.5">
-          <h2 className="px-1 text-[12px] font-bold uppercase tracking-wider text-[var(--m3-primary)]">
-            Komunitas Developer
-          </h2>
-          <div className="rounded-[24px] metro-surface overflow-hidden divide-y divide-black/[0.06] dark:divide-white/[0.06]">
-            {/* Saluran WhatsApp */}
-            <a
-              href="https://whatsapp.com/channel/0029Vb7vOOyLY6cyTRQF1M06"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
-            >
-              <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                <span
-                  className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-                  style={{ backgroundColor: '#22C55E22', color: '#22C55E' }}
-                >
-                  <MessageCircle className="w-[18px] h-[18px]" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[14.5px] font-semibold leading-snug">
-                    Saluran WhatsApp
-                  </p>
-                  <p className="text-[12.5px] opacity-60 truncate mt-0.5">
-                    whatsapp.com/channel/0029Vb7vOOyLY6cyTRQF1M06
-                  </p>
-                </div>
-              </div>
-              <ExternalLink className="w-4 h-4 opacity-50 shrink-0" />
-            </a>
-
-            {/* TikTok */}
-            <a
-              href="https://www.tiktok.com/@sannforum.id"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
-            >
-              <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                <span
-                  className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-                  style={{
-                    backgroundColor:
-                      'color-mix(in srgb, var(--m3-primary) 14%, transparent)',
-                    color: 'var(--m3-primary)',
-                  }}
-                >
-                  <Music2 className="w-[18px] h-[18px]" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[14.5px] font-semibold leading-snug">
-                    TikTok
-                  </p>
-                  <p className="text-[12.5px] opacity-60 truncate mt-0.5">
-                    @sannforum.id
-                  </p>
-                </div>
-              </div>
-              <ExternalLink className="w-4 h-4 opacity-50 shrink-0" />
-            </a>
-
-            {/* Telegram */}
-            <a
-              href="https://t.me/sannnforums"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
-            >
-              <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                <span
-                  className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-                  style={{ backgroundColor: '#38BDF822', color: '#38BDF8' }}
-                >
-                  <Send className="w-[18px] h-[18px]" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[14.5px] font-semibold leading-snug">
-                    Telegram
-                  </p>
-                  <p className="text-[12.5px] opacity-60 truncate mt-0.5">
-                    t.me/sannnforums
-                  </p>
-                </div>
-              </div>
-              <ExternalLink className="w-4 h-4 opacity-50 shrink-0" />
-            </a>
-
-            {/* Subtle, balanced attribution matching Settings typography */}
-            <div className="px-4 py-3">
-              <p className="text-[11.5px] font-medium tracking-wide opacity-55">
-                POWERED BY SANN404 FORUM GROUP
-              </p>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* 6. ABOUT */}
+      {/* 5. ABOUT */}
       {showSection('about', 'about sonara version ytmusic-api vercel') && (
         <section className="space-y-2.5">
           <h2 className="px-1 text-[12px] font-bold uppercase tracking-wider text-[var(--m3-primary)]">

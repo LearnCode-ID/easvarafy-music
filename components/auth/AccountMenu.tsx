@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { LayoutDashboard, LogIn, LogOut, ShieldCheck, User as UserIcon } from 'lucide-react';
+import { LayoutDashboard, LogIn, LogOut, Settings, ShieldCheck, User as UserIcon } from 'lucide-react';
 import { useAuth } from './AuthProvider';
 import { useMusic } from '@/components/MusicProvider';
 import { displayNameOf, initialsOf } from '@/lib/auth/types';
@@ -58,6 +58,33 @@ function ProfileLibraryButton({
   );
 }
 
+function AccountSettingsButton({
+  onNavigate,
+  className,
+}: {
+  onNavigate?: () => void;
+  className?: string;
+}) {
+  const { setActiveTab, openDetail } = useMusic();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        onNavigate?.();
+        openDetail(null);
+        setActiveTab('settings');
+      }}
+      className={cn(
+        'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm hover:bg-black/5 dark:hover:bg-white/10',
+        className
+      )}
+    >
+      <Settings className="w-4 h-4" />
+      Pengaturan Akun
+    </button>
+  );
+}
+
 function AccountMenuCard({ onNavigate }: { onNavigate?: () => void }) {
   const { profile, email, isAdmin, isBanned, signOut } = useAuth();
   const router = useRouter();
@@ -87,6 +114,7 @@ function AccountMenuCard({ onNavigate }: { onNavigate?: () => void }) {
           Admin Dashboard
         </Link>
       )}
+      <AccountSettingsButton onNavigate={onNavigate} />
       <ProfileLibraryButton onNavigate={onNavigate} />
       {isBanned && (
         <p className="px-2.5 py-1.5 text-[11px] text-red-600 dark:text-red-400">
