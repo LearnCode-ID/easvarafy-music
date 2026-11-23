@@ -20,6 +20,7 @@ import {
   playTrackInQueue,
   removeFromQueue,
   reorderQueue,
+  replaceUpcomingQueue,
   toggleShuffleQueue,
   type QueueState,
 } from '@/lib/metrolist/queue';
@@ -115,6 +116,7 @@ interface YTPlayerInstance {
 }
 
 export type NowPlayingTab = 'player' | 'lyrics' | 'queue';
+export type UpNextMode = 'mixed' | 'discover' | 'related' | 'library';
 
 interface MusicContextValue {
   // Navigation
@@ -171,7 +173,11 @@ interface MusicContextValue {
   moveQueueItem: (from: number, to: number) => void;
   toggleShuffle: () => void;
   cycleRepeat: () => void;
-  startRadio: (track: Track) => Promise<void>;
+  startRadio: (track: Track, mode?: UpNextMode) => Promise<void>;
+  refreshUpNext: (mode?: UpNextMode) => Promise<void>;
+  upNextMode: UpNextMode;
+  setUpNextMode: (mode: UpNextMode) => void;
+  upNextRefreshing: boolean;
   jumpToQueueIndex: (idx: number) => void;
 
   // Lyrics
@@ -279,6 +285,12 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const lastLoadedVideoIdRef = useRef<string | null>(null);
   const nextTrackRef = useRef<(manual?: boolean) => void>(() => {});
   const radioFetchingRef = useRef<string | null>(null);
+  const [upNextMode, setUpNextModeState] = useState<UpNextMode>('mixed');
+  const [upNextRefreshing, setUpNextRefreshing] = useState(false);
+  const upNextModeRef = useRef<UpNextMode>('mixed');
+  const likedTracksRef = useRef<Track[]>([]);
+  const playlistsRef = useRef<UserPlaylist[]>([]);
+  const historyRef = useRef<PlayEvent[]>([]);
 
   // Background playback refs
   const userPausedRef = useRef(false);
@@ -299,6 +311,22 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
+
+  useEffect(() => {
+    upNextModeRef.current = upNextMode;
+  }, [upNextMode]);
+
+  useEffect(() => {
+    likedTracksRef.current = likedTracks;
+  }, [likedTracks]);
+
+  useEffect(() => {
+    playlistsRef.current = playlists;
+  }, [playlists]);
+
+  useEffect(() => {
+    historyRef.current = history;
+  }, [history]);
 
   useEffect(() => {
     popupModeRef.current = popupMode;
@@ -690,6 +718,96 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     }
   }, [resumePlaybackKeepAlive, showToast]);
 
+  const collectPersonalUpNextPool = useCallback((excludeVideoId: string): Track[] => {
+    const pool: Track[] = [];
+    const seen = new Set<string>([excludeVideoId]);
+    const pushIfNew = (t: Track | undefined) => {
+      if (!t?.videoId || seen.has(t.videoId)) return;
+      seen.add(t.videoId);
+      pool.push(t);
+    };
+
+    for (const t of likedTracksRef.current) pushIfNew(t);
+    for (const pl of playlistsRef.current) {
+      for (const t of pl.tracks) pushIfNew(t);
+    }
+    for (const evt of historyRef.current) pushIfNew(evt.track);
+
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    return pool;
+  }, []);
+
+  const buildUpNextCandidates = useCallback(
+    async (seedTrack: Track, mode: UpNextMode): Promise<Track[]> => {
+      const personalPool = collectPersonalUpNextPool(seedTrack.videoId);
+      const apiMode =
+        mode === 'related'
+          ? 'related'
+          : mode === 'discover' || mode === 'library'
+          ? 'discover'
+          : 'mixed';
+
+      let remoteTracks: Track[] = [];
+      if (mode !== 'library' || personalPool.length < 12) {
+        try {
+          const headers: Record<string, string> = {};
+          if (settingsRef.current.ytCookie.trim()) {
+            headers['x-yt-cookie'] = settingsRef.current.ytCookie.trim();
+          }
+          const res = await fetch(
+            apiUrl(
+              `/api/music/up-next?videoId=${encodeURIComponent(
+                seedTrack.videoId
+              )}&gl=${settingsRef.current.region}&mode=${apiMode}`
+            ),
+            { headers }
+          );
+          if (res.ok) {
+            const data = (await res.json()) as { tracks?: Track[] };
+            remoteTracks = data.tracks ?? [];
+          }
+        } catch {
+          // fallback to personalPool
+        }
+      }
+
+      if (mode === 'library') {
+        return [...personalPool, ...remoteTracks].slice(0, 24);
+      }
+
+      if (mode === 'discover' || mode === 'related') {
+        return remoteTracks.slice(0, 24);
+      }
+
+      // 'mixed': interleave remote (related + discovery/trending) with user's own library favorites
+      const mixed: Track[] = [];
+      const seen = new Set<string>([seedTrack.videoId]);
+      let rIdx = 0;
+      let pIdx = 0;
+      while (mixed.length < 24 && (rIdx < remoteTracks.length || pIdx < personalPool.length)) {
+        for (let k = 0; k < 2 && rIdx < remoteTracks.length && mixed.length < 24; k++) {
+          const candidate = remoteTracks[rIdx++];
+          if (candidate?.videoId && !seen.has(candidate.videoId)) {
+            seen.add(candidate.videoId);
+            mixed.push(candidate);
+          }
+        }
+        if (pIdx < personalPool.length && mixed.length < 24) {
+          const candidate = personalPool[pIdx++];
+          if (candidate?.videoId && !seen.has(candidate.videoId)) {
+            seen.add(candidate.videoId);
+            mixed.push(candidate);
+          }
+        }
+      }
+      return mixed;
+    },
+    [collectPersonalUpNextPool]
+  );
+
   // Load new track into YT Player + fetch synced lyrics + auto-radio prefetch
   useEffect(() => {
     if (!currentTrack) return;
@@ -754,22 +872,22 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         if (!cancelled) setLyricsLoading(false);
       }
 
-      // Metrolist Auto-Continue Radio: prefetch Up Nexts when near end of queue
+      // Auto-Continue Up Next: prefetch diverse mixed/discovery/library tracks when near end of queue
       const remaining = queueState.queue.length - 1 - queueState.currentIndex;
       if (
         settings.autoContinueRadio &&
-        remaining <= 1 &&
+        remaining <= 2 &&
         radioFetchingRef.current !== currentTrack.videoId
       ) {
         radioFetchingRef.current = currentTrack.videoId;
         try {
-          const res = await fetch(
-            apiUrl(`/api/music/up-next?videoId=${encodeURIComponent(currentTrack.videoId)}&gl=${settings.region}`)
+          const candidates = await buildUpNextCandidates(
+            currentTrack,
+            upNextModeRef.current
           );
-          const data = (await res.json()) as { tracks?: Track[] };
-          if (!cancelled && data.tracks && data.tracks.length > 0) {
+          if (!cancelled && candidates.length > 0) {
             setQueueState((prev) =>
-              appendRadioContinuation(prev, data.tracks!, settings, 12)
+              appendRadioContinuation(prev, candidates, settingsRef.current, 16)
             );
           }
         } catch {
@@ -1211,24 +1329,56 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const startRadio = useCallback(
-    async (track: Track) => {
+    async (track: Track, mode?: UpNextMode) => {
+      const targetMode = mode ?? upNextModeRef.current;
       playTrack(track, [track]);
-      showToast(`Starting radio from "${track.title}"`);
+      showToast(`Memulai Up Next dari "${track.title}"`);
+      setUpNextRefreshing(true);
       try {
-        const res = await fetch(
-          apiUrl(`/api/music/up-next?videoId=${encodeURIComponent(track.videoId)}&gl=${settings.region}`)
-        );
-        const data = (await res.json()) as { tracks?: Track[] };
-        if (data.tracks && data.tracks.length > 0) {
+        const candidates = await buildUpNextCandidates(track, targetMode);
+        if (candidates.length > 0) {
           setQueueState((prev) =>
-            appendRadioContinuation(prev, data.tracks!, settings, 20)
+            appendRadioContinuation(prev, candidates, settingsRef.current, 20)
           );
         }
       } catch {
         // ignore
+      } finally {
+        setUpNextRefreshing(false);
       }
     },
-    [playTrack, settings, showToast]
+    [buildUpNextCandidates, playTrack, showToast]
+  );
+
+  const refreshUpNext = useCallback(
+    async (mode?: UpNextMode) => {
+      const seed = getCurrentTrack(queueState);
+      if (!seed) return;
+      const targetMode = mode ?? upNextModeRef.current;
+      setUpNextRefreshing(true);
+      try {
+        const candidates = await buildUpNextCandidates(seed, targetMode);
+        if (candidates.length > 0) {
+          setQueueState((prev) =>
+            replaceUpcomingQueue(prev, candidates, settingsRef.current, 20)
+          );
+        }
+      } catch {
+        // ignore
+      } finally {
+        setUpNextRefreshing(false);
+      }
+    },
+    [buildUpNextCandidates, queueState]
+  );
+
+  const setUpNextMode = useCallback(
+    (mode: UpNextMode) => {
+      upNextModeRef.current = mode;
+      setUpNextModeState(mode);
+      void refreshUpNext(mode);
+    },
+    [refreshUpNext]
   );
 
   const setSleepTimer = useCallback(
@@ -1635,6 +1785,10 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     toggleShuffle,
     cycleRepeat,
     startRadio,
+    refreshUpNext,
+    upNextMode,
+    setUpNextMode,
+    upNextRefreshing,
     jumpToQueueIndex,
     lyrics,
     lyricsLoading,
