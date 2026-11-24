@@ -54,7 +54,10 @@ const nextConfig: NextConfig = {
   // `output: 'export'` is only used for the APK build; the web build keeps the
   // Node API routes (ytmusic / lyrics) that the player has always used.
   output: isStaticExport ? 'export' : 'standalone',
-  trailingSlash: true,
+  // Trailing slashes are only needed for static export pages (`out/login/index.html`).
+  // Keeping trailingSlash false on Vercel prevents 308 redirects on `/api/music/*`
+  // that break cross-origin fetch() calls from the Capacitor APK WebView.
+  trailingSlash: isStaticExport,
   transpilePackages: ['motion'],
   turbopack: {},
   webpack: (config, { dev }) => {
