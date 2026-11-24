@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseLrcLyrics } from '@/lib/metrolist/lyrics';
 import type { LyricsPayload } from '@/lib/metrolist/types';
+import { corsOptionsResponse } from '@/lib/server/cors';
 import { getYTMusicClient } from '@/lib/server/ytmusic';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+export function OPTIONS() {
+  return corsOptionsResponse();
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);

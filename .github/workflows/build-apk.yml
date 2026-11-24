@@ -23,12 +23,12 @@ jobs:
     timeout-minutes: 40
 
     env:
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://kxvckczujvwvfkykofzc.supabase.co' }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4dmNrY3p1anZ3dmZreWtvZnpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU0Mjc4NjcsImV4cCI6MjExMTAwMzg2N30.QkG9cEZWdDrJHYO3msqi4rhNy2xIQAJrK4zuiTYhi74' }}
       # The APK is a static export with no server of its own: the music routes
       # (/api/music/*) are reached on the deployed web build. Same endpoints,
       # same data source as the web app.
-      NEXT_PUBLIC_API_BASE: ${{ secrets.NEXT_PUBLIC_API_BASE }}
+      NEXT_PUBLIC_API_BASE: ${{ secrets.NEXT_PUBLIC_API_BASE || 'https://easvarafy-music.vercel.app' }}
 
     steps:
       - name: Checkout

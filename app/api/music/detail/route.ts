@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { corsOptionsResponse } from '@/lib/server/cors';
 import {
   getYTMusicClient,
   normalizeAlbum,
@@ -10,6 +11,10 @@ import {
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+export function OPTIONS() {
+  return corsOptionsResponse();
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);

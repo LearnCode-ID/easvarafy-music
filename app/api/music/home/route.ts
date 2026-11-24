@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SEED_TRACKS } from '@/lib/metrolist/seed';
 import type { HomeShelf, Track } from '@/lib/metrolist/types';
+import { corsOptionsResponse } from '@/lib/server/cors';
 import {
   getYTMusicClient,
   normalizeHomeSections,
@@ -9,6 +10,10 @@ import {
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+export function OPTIONS() {
+  return corsOptionsResponse();
+}
 
 const MOOD_QUERY_MAP: Record<string, string> = {
   energize: 'upbeat pop dance hits',
