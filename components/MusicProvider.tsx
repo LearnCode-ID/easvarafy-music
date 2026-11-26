@@ -68,6 +68,7 @@ import { apiUrl } from '@/lib/api/base';
 import {
   clearNativeMedia,
   hasNativeMediaControls,
+  isNativeIslandActive,
   onNativeMediaAction,
   updateNativeMedia,
   upgradeArtworkUrl,
@@ -953,7 +954,12 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
           !userPausedRef.current
         ) {
           resumePlaybackKeepAlive();
-          if (settingsRef.current.autoPopoutIsland && popupModeRef.current === 'off') {
+          if (
+            settingsRef.current.autoPopoutIsland &&
+            popupModeRef.current === 'off' &&
+            // The Android system Dynamic Island already shows outside the app.
+            !isNativeIslandActive()
+          ) {
             popupHandlersRef.current.open();
           }
         }
@@ -1293,6 +1299,11 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
           if (typeof event.position === 'number' && Number.isFinite(event.position)) {
             h.seekTo(event.position);
           }
+          break;
+        case 'open':
+          // Opened from the system Dynamic Island -> show the full player.
+          setNowPlayingTab('player');
+          setIsNowPlayingOpen(true);
           break;
       }
     });

@@ -34,6 +34,7 @@ import {
   Search as SearchIcon,
   Shapes,
   SlidersHorizontal,
+  Smartphone,
   Sparkles,
   SquareRoundCorner,
   Sun,
@@ -48,6 +49,11 @@ import {
 } from 'lucide-react';
 import { useMusic } from './MusicProvider';
 import { AccountSettingsSection } from './AccountSettingsSection';
+import {
+  openNativeIslandSettings,
+  setNativeIslandEnabled,
+  useNativeIslandStatus,
+} from '@/lib/native/mediaControls';
 import { LyricsSettingsPreview } from './SyncedLyricsView';
 import { EQUALIZER_PRESETS } from '@/lib/metrolist/statsEngine';
 import { METROLIST_ACCENT_PALETTES } from '@/lib/metrolist/theme';
@@ -261,6 +267,100 @@ function PreferenceRow({
       </div>
       {trailing && <div className="shrink-0">{trailing}</div>}
     </Wrapper>
+  );
+}
+
+/**
+ * Android APK only: Dynamic Island drawn by the system around the front camera,
+ * on top of every app (not inside the WebView).
+ */
+function SystemDynamicIslandSettings() {
+  const status = useNativeIslandStatus();
+  if (!status?.supported) return null;
+
+  const modeLabel =
+    status.mode === 'accessibility'
+      ? 'Aktif di sekitar kamera depan, di atas semua aplikasi'
+      : status.mode === 'overlay'
+        ? 'Aktif di bawah status bar. Aktifkan mode Aksesibilitas agar pas di kamera'
+        : 'Butuh izin agar bisa tampil di luar aplikasi';
+
+  const stepButton =
+    'px-3.5 h-8 rounded-full text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 transition-all';
+
+  return (
+    <>
+      <PreferenceRow
+        icon={Smartphone}
+        title="Dynamic Island Sistem"
+        description={status.enabled ? modeLabel : 'Mati — memakai Dynamic Island di dalam aplikasi'}
+        trailing={
+          <M3Switch
+            label="Dynamic Island Sistem"
+            checked={status.enabled}
+            onChange={() => void setNativeIslandEnabled(!status.enabled)}
+          />
+        }
+      />
+      {status.enabled && status.mode !== 'accessibility' && (
+        <div className="px-4 pb-4 pt-1 space-y-2.5">
+          <div className="rounded-2xl bg-black/[0.04] dark:bg-white/[0.05] p-3.5 space-y-3">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 w-6 h-6 rounded-full bg-[var(--m3-primary)] text-[var(--m3-on-primary)] text-[11px] font-bold flex items-center justify-center shrink-0">
+                1
+              </span>
+              <div className="min-w-0 flex-1 space-y-2">
+                <p className="text-[12.5px] leading-snug">
+                  <span className="font-semibold">Mode kamera (disarankan).</span>{' '}
+                  Buka Aksesibilitas → <span className="font-semibold">Easvarafy Dynamic Island</span> → aktifkan.
+                  Island akan berada tepat di sekitar kamera depan seperti iPhone.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void openNativeIslandSettings('accessibility')}
+                    className={`${stepButton} bg-[var(--m3-primary)] text-[var(--m3-on-primary)]`}
+                  >
+                    Buka Aksesibilitas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void openNativeIslandSettings('app')}
+                    className={`${stepButton} bg-black/[0.06] dark:bg-white/[0.08]`}
+                  >
+                    Info aplikasi
+                  </button>
+                </div>
+                <p className="text-[11.5px] opacity-60 leading-snug">
+                  Jika tombolnya abu-abu (&quot;Setelan terbatas&quot;): Info aplikasi → menu ⋮ →
+                  &quot;Izinkan setelan terbatas&quot;, lalu coba lagi.
+                </p>
+              </div>
+            </div>
+            {!status.overlayPermission && (
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 w-6 h-6 rounded-full bg-black/10 dark:bg-white/15 text-[11px] font-bold flex items-center justify-center shrink-0">
+                  2
+                </span>
+                <div className="min-w-0 flex-1 space-y-2">
+                  <p className="text-[12.5px] leading-snug">
+                    <span className="font-semibold">Alternatif.</span> Izinkan &quot;Tampil di atas aplikasi
+                    lain&quot;. Island muncul di bawah status bar.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void openNativeIslandSettings('overlay')}
+                    className={`${stepButton} bg-black/[0.06] dark:bg-white/[0.08]`}
+                  >
+                    Izinkan tampil di atas aplikasi
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1353,6 +1453,9 @@ export function SettingsView() {
                 />
               }
             />
+
+            {/* Android: system-wide Dynamic Island around the camera */}
+            <SystemDynamicIslandSettings />
 
             {/* Auto Pop-Out Dynamic Island */}
             <PreferenceRow
