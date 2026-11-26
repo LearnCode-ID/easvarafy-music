@@ -69,12 +69,36 @@ if (existsSync(manifestPath)) {
     }
   }
 
+  // System-wide Dynamic Island host (TYPE_ACCESSIBILITY_OVERLAY above the status bar,
+  // around the front camera). Enabled by the user in Settings > Accessibility.
+  if (!manifest.includes('android:name=".IslandAccessibilityService"')) {
+    const islandService = `
+        <service
+            android:name=".IslandAccessibilityService"
+            android:exported="true"
+            android:label="@string/easvarafy_island_accessibility_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/easvarafy_island_accessibility" />
+        </service>`;
+    if (manifest.includes('</application>')) {
+      manifest = manifest.replace('</application>', `${islandService}\n    </application>`);
+      console.log('✓ Registered IslandAccessibilityService (Dynamic Island) in AndroidManifest.xml');
+    }
+  }
+
   // Add required permissions for background media playback
   const requiredPermissions = [
     'android.permission.WAKE_LOCK',
     'android.permission.FOREGROUND_SERVICE',
     'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
     'android.permission.POST_NOTIFICATIONS',
+    // Fallback host for the Dynamic Island ("display over other apps").
+    'android.permission.SYSTEM_ALERT_WINDOW',
   ];
   for (const perm of requiredPermissions) {
     if (!manifest.includes(perm)) {
@@ -277,7 +301,7 @@ const copyTree = (src, dest) => {
 };
 copyTree(path.join(nativeAndroidDir, 'java'), path.join(root, 'android', 'app', 'src', 'main', 'java'));
 copyTree(path.join(nativeAndroidDir, 'res'), resDir);
-console.log('✓ Copied native/android (MediaPlaybackService, EasvarafyMediaPlugin, notification icon)');
+console.log('✓ Copied native/android (MediaPlaybackService, EasvarafyMediaPlugin, Dynamic Island, icons)');
 
 writeFileSync(
   path.join(javaDir, 'MainActivity.java'),

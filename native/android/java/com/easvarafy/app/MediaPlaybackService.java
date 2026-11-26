@@ -155,6 +155,24 @@ public class MediaPlaybackService extends Service {
         }
     }
 
+    /** Transport request coming from the system Dynamic Island. */
+    static void requestTransport(final String action, final long seekPosMs) {
+        final MediaPlaybackService svc = instance;
+        if (svc != null) {
+            svc.mainHandler.post(() -> svc.handleTransport(action, seekPosMs));
+        } else {
+            EasvarafyMediaPlugin.dispatchAction(action, seekPosMs >= 0 ? seekPosMs / 1000.0 : -1);
+        }
+    }
+
+    /** Re-render the Dynamic Island (permission / setting changed). */
+    static void refreshIsland() {
+        final MediaPlaybackService svc = instance;
+        if (svc != null) {
+            svc.mainHandler.post(svc::render);
+        }
+    }
+
     private static Snapshot readLatest() {
         synchronized (LOCK) {
             return latest == null ? null : latest.copy();
@@ -260,6 +278,7 @@ public class MediaPlaybackService extends Service {
     public void onDestroy() {
         instance = null;
         mainHandler.removeCallbacksAndMessages(null);
+        DynamicIslandController.get(this).clear();
         artworkExecutor.shutdownNow();
         if (wakeLock != null && wakeLock.isHeld()) {
             wakeLock.release();
@@ -345,6 +364,9 @@ public class MediaPlaybackService extends Service {
         if (!session.isActive()) {
             session.setActive(true);
         }
+
+        // System-wide Dynamic Island around the front camera (if enabled + permitted).
+        DynamicIslandController.get(this).update(s, art);
 
         Notification notification = buildMediaNotification(s, art);
         if (!inForeground) {
@@ -464,6 +486,7 @@ public class MediaPlaybackService extends Service {
     }
 
     private void shutdown() {
+        DynamicIslandController.get(this).clear();
         if (session != null) {
             session.setActive(false);
         }
