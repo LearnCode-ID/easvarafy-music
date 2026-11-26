@@ -58,7 +58,7 @@ export default function AdminLoginPage() {
     setLoading(false);
 
     if (!isAdminRole(profile?.role)) {
-      setFormError('Akun ini bukan admin atau developer. Gunakan halaman login user.');
+      setFormError('Akun ini bukan admin. Halaman ini khusus admin — gunakan halaman login user.');
       await signOut();
       return;
     }

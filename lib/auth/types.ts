@@ -15,12 +15,28 @@ export interface AuthUser {
   email: string | null;
 }
 
+/**
+ * Only the `admin` role may open the admin panel (/admin/*).
+ * `developer` is a badge role only (yellow check) and has NO admin access.
+ */
 export function isAdminRole(role: string | null | undefined): boolean {
-  return role === 'admin' || role === 'developer';
+  return role === 'admin';
 }
 
+/** Internal role label, used only inside the admin panel. */
 export function roleLabelOf(role: string | null | undefined): string {
   if (role === 'admin') return 'Admin';
+  if (role === 'developer') return 'Developer';
+  return 'Member';
+}
+
+/**
+ * Public label shown next to the verified badge everywhere outside the admin
+ * panel. The blue check means "Akun Terverifikasi" — it never reveals that an
+ * account is an admin.
+ */
+export function publicRoleLabelOf(role: string | null | undefined): string {
+  if (role === 'admin') return 'Terverifikasi';
   if (role === 'developer') return 'Developer';
   return 'Member';
 }

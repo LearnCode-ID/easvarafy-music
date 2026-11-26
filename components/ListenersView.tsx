@@ -17,7 +17,7 @@ import {
 import { useMusic } from './MusicProvider';
 import { useAuth } from './auth/AuthProvider';
 import { VerifiedBadge } from './auth/VerifiedBadge';
-import { roleLabelOf } from '@/lib/auth/types';
+import { publicRoleLabelOf } from '@/lib/auth/types';
 import {
   fetchMonthlyTopListeners,
   formatListenDuration,
@@ -284,7 +284,7 @@ export function ListenersView() {
                           <VerifiedBadge role={entry.role} size="md" />
                         </div>
                         <p className="text-[11px] font-semibold text-[var(--m3-on-surface-variant)]">
-                          {roleLabelOf(entry.role)}
+                          {publicRoleLabelOf(entry.role)}
                           {isMe ? ' · Kamu' : ''}
                         </p>
                       </div>

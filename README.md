@@ -139,7 +139,18 @@ Easvarafy memakai **Supabase Auth** hanya untuk identitas pengguna. Katalog musi
 semua; membuat playlist, like lagu, atau menyimpan koleksi akan memunculkan popup
 **"Login dulu yuk"**.
 
-**Proteksi role:** membuka `/admin/*` tanpa role admin akan diarahkan ke `/login`.
+**Proteksi role:** `/admin/*` **hanya untuk role `admin`**. Guest diarahkan ke `/login`;
+akun `user` maupun `developer` yang sudah login melihat "Akses ditolak" lalu dikembalikan
+ke beranda. Fungsi database `is_admin()` (dipakai RLS & `admin_user_stats()`) juga hanya
+menerima `admin` — lihat `supabase/migrations/20261126000000_admin_panel_admin_only.sql`.
+
+**Badge centang:**
+
+| Role | Badge | Keterangan publik | Akses admin |
+| --- | --- | --- | --- |
+| `admin` | Centang biru | **Akun Terverifikasi** / "Terverifikasi" (tidak menyebut admin) | ✅ |
+| `developer` | Centang kuning | Developer Terverifikasi | ❌ |
+| `user` | — | Member | ❌ |
 
 **Membuat admin pertama:** buka `/admin/register` sekali (atau daftar lewat `/register`
 lalu jalankan SQL di bawah), setelah itu semua pengaturan role dilakukan dari
@@ -161,7 +172,7 @@ profiles (
   email text,
   name text,
   avatar_url text,
-  role text not null default 'user' check (role in ('user','admin')),
+  role text not null default 'user' check (role in ('user','admin','developer')),
   is_banned boolean not null default false,
   created_at timestamptz not null default now()
 )

@@ -15,9 +15,9 @@ const NAV = [
 ];
 
 /**
- * Admin shell + guard.
- * Any non-admin (guest or plain user) is redirected to /login — the only admin
- * entry point is /admin/login.
+ * Admin shell + guard. Only role `admin` may enter (developers cannot).
+ * - Guest -> /login?redirectTo=/admin/dashboard
+ * - Signed in but not admin (user / developer) -> back to the app home.
  */
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -27,7 +27,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (!ready || isLoginRoute) return;
-    if (!isAuthenticated || !isAdmin) router.replace('/login?redirectTo=/admin/dashboard');
+    if (!isAuthenticated) {
+      router.replace('/login?redirectTo=/admin/dashboard');
+    } else if (!isAdmin) {
+      // Signed-in user/developer: no admin access. Sending them to /login would
+      // bounce straight back here, so return them to the app instead.
+      const t = setTimeout(() => router.replace('/'), 1800);
+      return () => clearTimeout(t);
+    }
   }, [ready, isAuthenticated, isAdmin, isLoginRoute, router]);
 
   if (isLoginRoute) return <>{children}</>;
@@ -44,18 +51,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   if (!isAuthenticated || !isAdmin) {
+    const signedIn = isAuthenticated;
     return (
       <div className="min-h-screen bg-[var(--m3-bg)] flex flex-col items-center justify-center gap-3 px-6 text-center">
         <ShieldCheck className="w-8 h-8 text-[var(--m3-primary)]" />
-        <p className="text-sm font-semibold">Halaman ini khusus admin</p>
-        <p className="text-[12.5px] text-slate-500 dark:text-slate-400">
-          Kamu akan diarahkan ke halaman login…
+        <p className="text-sm font-semibold">
+          {signedIn ? 'Akses ditolak' : 'Halaman ini khusus admin'}
+        </p>
+        <p className="text-[12.5px] text-slate-500 dark:text-slate-400 max-w-xs">
+          {signedIn
+            ? 'Halaman ini hanya untuk admin. Akun kamu tidak punya akses ke panel admin. Mengalihkan ke beranda…'
+            : 'Kamu akan diarahkan ke halaman login…'}
         </p>
         <Link
-          href="/login"
+          href={signedIn ? '/' : '/login'}
           className="mt-2 min-h-[44px] px-5 rounded-full bg-[var(--m3-primary)] text-[var(--m3-on-primary)] text-[13px] font-semibold inline-flex items-center"
         >
-          Ke halaman login
+          {signedIn ? 'Ke beranda' : 'Ke halaman login'}
         </Link>
       </div>
     );

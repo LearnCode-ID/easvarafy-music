@@ -24,7 +24,7 @@ import { useAuth } from './auth/AuthProvider';
 import { AccountAvatar } from './auth/AccountMenu';
 import { VerifiedBadge } from './auth/VerifiedBadge';
 import { useMusic } from './MusicProvider';
-import { displayNameOf, roleLabelOf } from '@/lib/auth/types';
+import { displayNameOf, publicRoleLabelOf } from '@/lib/auth/types';
 
 export function AccountSettingsSection() {
   const router = useRouter();
@@ -303,7 +303,7 @@ export function AccountSettingsSection() {
                       }`}
                     >
                       <VerifiedBadge role={profile?.role} size="xs" />
-                      {roleLabelOf(profile?.role)}
+                      {publicRoleLabelOf(profile?.role)}
                     </span>
                   </div>
                   <p className="text-[12.5px] opacity-65 truncate mt-0.5">

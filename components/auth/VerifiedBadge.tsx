@@ -22,8 +22,8 @@ interface VerifiedBadgeProps {
 
 /**
  * Verified checkmark badge:
- * - Admin: Centang Biru (#1D9BF0)
- * - Developer: Centang Kuning/Oranye (#F59E0B -> #EA580C)
+ * - Centang Biru (#1D9BF0): "Akun Terverifikasi" (never labelled as admin)
+ * - Centang Kuning/Oranye (#F59E0B -> #EA580C): Developer Terverifikasi
  */
 export function VerifiedBadge({
   role,
@@ -37,8 +37,8 @@ export function VerifiedBadge({
   const pxSize = typeof size === 'number' ? size : SIZE_MAP[size] ?? 16;
 
   const isDev = role === 'developer';
-  const label = isDev ? 'Developer Terverifikasi' : 'Admin Terverifikasi';
-  const shortLabel = isDev ? 'Developer' : 'Admin';
+  const label = isDev ? 'Developer Terverifikasi' : 'Akun Terverifikasi';
+  const shortLabel = isDev ? 'Developer' : 'Terverifikasi';
 
   return (
     <span

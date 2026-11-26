@@ -7,7 +7,7 @@ import { LayoutDashboard, LogIn, LogOut, Settings, Trophy, User as UserIcon } fr
 import { useAuth } from './AuthProvider';
 import { VerifiedBadge } from './VerifiedBadge';
 import { useMusic } from '@/components/MusicProvider';
-import { displayNameOf, initialsOf, roleLabelOf } from '@/lib/auth/types';
+import { displayNameOf, initialsOf, publicRoleLabelOf } from '@/lib/auth/types';
 import { cn } from '@/lib/utils';
 
 export function AccountAvatar({ size = 32 }: { size?: number }) {
@@ -272,7 +272,7 @@ export function SidebarAccount({ className }: { className?: string }) {
           </div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate inline-flex items-center gap-1">
             {profile?.role === 'developer' || profile?.role === 'admin'
-              ? roleLabelOf(profile.role)
+              ? publicRoleLabelOf(profile.role)
               : 'Free account'}
           </p>
         </div>

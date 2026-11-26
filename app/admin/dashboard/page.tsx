@@ -65,7 +65,7 @@ export default function AdminDashboardPage() {
         <StatCard
           label="Admin & Dev"
           value={loading ? '—' : `${stats?.admins ?? 0} / ${stats?.developers ?? 0}`}
-          hint="Admin (biru) · Developer (kuning)"
+          hint="Admin (akses panel) · Developer (badge saja)"
           icon={<ShieldCheck className="w-4 h-4" />}
           tone="success"
         />
