@@ -65,6 +65,13 @@ import type {
   UserPlaylist,
 } from '@/lib/metrolist/types';
 import { apiUrl } from '@/lib/api/base';
+import {
+  clearNativeMedia,
+  hasNativeMediaControls,
+  onNativeMediaAction,
+  updateNativeMedia,
+  upgradeArtworkUrl,
+} from '@/lib/native/mediaControls';
 import { useAuth } from '@/components/auth/AuthProvider';
 
 declare global {
@@ -1254,6 +1261,93 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       // ignore
     }
   }, [currentTrack, currentTime, duration, settings.playbackRate]);
+
+  // ---------------------------------------------------------------------------
+  // Android APK: native media notification + lock-screen player (Spotify-style).
+  // WebView does not forward navigator.mediaSession to Android, so we drive a
+  // native MediaSession through the EasvarafyMedia Capacitor plugin instead.
+  // ---------------------------------------------------------------------------
+  const nativeMediaHandlersRef = useRef({ play, pause, nextTrack, prevTrack, seekTo, resumePlaybackKeepAlive });
+  useEffect(() => {
+    nativeMediaHandlersRef.current = { play, pause, nextTrack, prevTrack, seekTo, resumePlaybackKeepAlive };
+  }, [play, pause, nextTrack, prevTrack, seekTo, resumePlaybackKeepAlive]);
+
+  useEffect(() => {
+    return onNativeMediaAction((event) => {
+      const h = nativeMediaHandlersRef.current;
+      switch (event.action) {
+        case 'play':
+          h.play();
+          h.resumePlaybackKeepAlive();
+          break;
+        case 'pause':
+          h.pause();
+          break;
+        case 'next':
+          h.nextTrack(true);
+          break;
+        case 'previous':
+          h.prevTrack();
+          break;
+        case 'seekto':
+          if (typeof event.position === 'number' && Number.isFinite(event.position)) {
+            h.seekTo(event.position);
+          }
+          break;
+      }
+    });
+  }, []);
+
+  const nativeCurrentTimeRef = useRef(0);
+  useEffect(() => {
+    nativeCurrentTimeRef.current = currentTime;
+  }, [currentTime]);
+  // Last position we told Android about, used to detect seeks / drift without
+  // rebuilding the notification on every 250 ms progress tick.
+  const nativeLastSyncRef = useRef<{ position: number; at: number; playing: boolean; rate: number } | null>(null);
+
+  const pushNativeMedia = useCallback(() => {
+    if (!currentTrack) return;
+    const effectiveDuration = duration || currentTrack.duration || 0;
+    const position = nativeCurrentTimeRef.current;
+    const rate = settings.playbackRate > 0 ? settings.playbackRate : 1;
+    nativeLastSyncRef.current = { position, at: Date.now(), playing: isPlaying, rate };
+    void updateNativeMedia({
+      title: currentTrack.title,
+      artist: currentTrack.artist,
+      album: currentTrack.album?.name || '',
+      artworkUrl: upgradeArtworkUrl(currentTrack.thumbnail),
+      playing: isPlaying,
+      position,
+      duration: effectiveDuration,
+      playbackRate: rate,
+    });
+  }, [currentTrack, duration, isPlaying, settings.playbackRate]);
+
+  // Track / play-state / duration changes -> full update
+  useEffect(() => {
+    if (!hasNativeMediaControls()) return;
+    if (!currentTrack) {
+      nativeLastSyncRef.current = null;
+      void clearNativeMedia();
+      return;
+    }
+    pushNativeMedia();
+  }, [currentTrack, pushNativeMedia]);
+
+  // Progress ticks -> only resync when the real position drifts from what
+  // Android is extrapolating (seek, buffering stall, track restart).
+  useEffect(() => {
+    if (!currentTrack || !hasNativeMediaControls()) return;
+    const last = nativeLastSyncRef.current;
+    if (!last) return;
+    const expected = last.playing
+      ? last.position + ((Date.now() - last.at) / 1000) * last.rate
+      : last.position;
+    if (Math.abs(currentTime - expected) > 2.5) {
+      pushNativeMedia();
+    }
+  }, [currentTime, currentTrack, pushNativeMedia]);
 
   const setVolume = useCallback((vol: number) => {
     const clamped = Math.max(0, Math.min(100, vol));

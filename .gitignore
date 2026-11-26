@@ -7,6 +7,6 @@ coverage/
 !.env.example
 .static-export-stash/
 out/
-android/
+/android/
 assets/
 tsconfig.tsbuildinfo

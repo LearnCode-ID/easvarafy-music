@@ -6,9 +6,20 @@
  *  2. Native Android animated GIF splash screen (`public/loading.gif` -> `res/raw/loading.gif`).
  *  3. Permissions & Foreground Service (`mediaPlayback` + WakeLock + BackgroundWebView)
  *     so music continues playing smoothly when the user minimizes the app or locks the screen.
+ *     The service owns a native MediaSession + MediaStyle notification (copied from
+ *     native/android) so Android shows the Spotify-style player in the notification
+ *     shade and on the lock screen. The WebView does not do this on its own.
  *  4. Adequate Gradle JVM heap (`-Xmx2048m`) for CI builds.
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 
 const root = process.cwd();
@@ -247,119 +258,33 @@ public class GifMovieView extends View {
   'utf8'
 );
 
-writeFileSync(
-  path.join(javaDir, 'MediaPlaybackService.java'),
-  `package com.easvarafy.app;
-
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
-import android.app.Service;
-import android.content.Context;
-import android.content.Intent;
-import android.content.pm.ServiceInfo;
-import android.os.Build;
-import android.os.IBinder;
-import android.os.PowerManager;
-import androidx.core.app.NotificationCompat;
-
-public class MediaPlaybackService extends Service {
-    private static final String CHANNEL_ID = "easvarafy_playback_channel";
-    private static final int NOTIFICATION_ID = 1001;
-    private PowerManager.WakeLock wakeLock;
-
-    @Override
-    public void onCreate() {
-        super.onCreate();
-        createNotificationChannel();
-        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        if (pm != null) {
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Easvarafy::MediaPlaybackWakeLock");
-            wakeLock.setReferenceCounted(false);
-        }
+// MediaPlaybackService (MediaSession + MediaStyle notification / lock-screen player)
+// and the EasvarafyMedia Capacitor plugin live as real Java files in
+// native/android so they are easy to read and edit.
+const nativeAndroidDir = path.join(root, 'native', 'android');
+const copyTree = (src, dest) => {
+  if (!existsSync(src)) return;
+  mkdirSync(dest, { recursive: true });
+  for (const entry of readdirSync(src, { withFileTypes: true })) {
+    const from = path.join(src, entry.name);
+    const to = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyTree(from, to);
+    } else {
+      copyFileSync(from, to);
     }
-
-    @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-        Intent openAppIntent = new Intent(this, MainActivity.class);
-        openAppIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            openAppIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
-
-        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Easvarafy")
-            .setContentText("Pemutaran musik latar belakang aktif")
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .build();
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
-        } else {
-            startForeground(NOTIFICATION_ID, notification);
-        }
-
-        if (wakeLock != null && !wakeLock.isHeld()) {
-            wakeLock.acquire();
-        }
-
-        return START_STICKY;
-    }
-
-    @Override
-    public void onTaskRemoved(Intent rootIntent) {
-        stopSelf();
-        super.onTaskRemoved(rootIntent);
-    }
-
-    @Override
-    public void onDestroy() {
-        if (wakeLock != null && wakeLock.isHeld()) {
-            wakeLock.release();
-        }
-        stopForeground(STOP_FOREGROUND_REMOVE);
-        super.onDestroy();
-    }
-
-    @Override
-    public IBinder onBind(Intent intent) {
-        return null;
-    }
-
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID,
-                "Pemutaran Musik",
-                NotificationManager.IMPORTANCE_LOW
-            );
-            channel.setDescription("Menjaga musik tetap berjalan saat aplikasi diminimize");
-            channel.setShowBadge(false);
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            if (manager != null) {
-                manager.createNotificationChannel(channel);
-            }
-        }
-    }
-}
-`,
-  'utf8'
-);
+  }
+};
+copyTree(path.join(nativeAndroidDir, 'java'), path.join(root, 'android', 'app', 'src', 'main', 'java'));
+copyTree(path.join(nativeAndroidDir, 'res'), resDir);
+console.log('✓ Copied native/android (MediaPlaybackService, EasvarafyMediaPlugin, notification icon)');
 
 writeFileSync(
   path.join(javaDir, 'MainActivity.java'),
   `package com.easvarafy.app;
 
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.ImageDecoder;
 import android.graphics.drawable.AnimatedImageDrawable;
 import android.graphics.drawable.Drawable;
@@ -388,15 +313,32 @@ public class MainActivity extends BridgeActivity {
     private long splashStartTimeMs = 0L;
     private boolean splashDismissed = false;
 
+    private static final int REQUEST_POST_NOTIFICATIONS = 4210;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Local plugin: native media notification + lock-screen controls.
+        registerPlugin(EasvarafyMediaPlugin.class);
         super.onCreate(savedInstanceState);
+        requestNotificationPermissionIfNeeded();
         if (this.bridge != null && this.bridge.getWebView() != null) {
             WebView webView = this.bridge.getWebView();
             WebSettings settings = webView.getSettings();
             settings.setMediaPlaybackRequiresUserGesture(false);
         }
         showNativeGifSplash();
+    }
+
+    /**
+     * Android 13+ hides every notification (including the media player in the
+     * shade / lock screen) until POST_NOTIFICATIONS is granted at runtime.
+     */
+    private void requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < 33) return;
+        String permission = "android.permission.POST_NOTIFICATIONS";
+        if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[] { permission }, REQUEST_POST_NOTIFICATIONS);
+        }
     }
 
     private void showNativeGifSplash() {
@@ -485,17 +427,6 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    public void onStart() {
-        super.onStart();
-        Intent serviceIntent = new Intent(this, MediaPlaybackService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent);
-        } else {
-            startService(serviceIntent);
-        }
-    }
-
-    @Override
     public void onDestroy() {
         dismissSplashImmediately();
         if (isFinishing()) {
@@ -535,7 +466,7 @@ writeFileSync(
   'utf8'
 );
 
-console.log('✓ Configured native GIF splash screen, BackgroundWebView, MediaPlaybackService, and MainActivity');
+console.log('✓ Configured native GIF splash screen, BackgroundWebView, and MainActivity');
 
 if (existsSync(gradlePropsPath)) {
   let props = readFileSync(gradlePropsPath, 'utf8');
