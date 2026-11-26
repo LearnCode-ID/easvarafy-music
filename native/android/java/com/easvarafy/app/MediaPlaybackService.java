@@ -525,15 +525,21 @@ public class MediaPlaybackService extends Service {
     private static Bitmap downloadBitmap(String url) {
         HttpURLConnection conn = null;
         try {
-            conn = (HttpURLConnection) new URL(url).openConnection();
-            conn.setConnectTimeout(8000);
-            conn.setReadTimeout(8000);
-            conn.setInstanceFollowRedirects(true);
-            conn.connect();
-            if (conn.getResponseCode() >= 400) return null;
             Bitmap raw;
-            try (InputStream in = conn.getInputStream()) {
-                raw = BitmapFactory.decodeStream(in);
+            if (url.startsWith("file://")) {
+                // Offline cover saved by @capacitor/filesystem (Directory.Data/offline/art).
+                String path = android.net.Uri.parse(url).getPath();
+                raw = path != null ? BitmapFactory.decodeFile(path) : null;
+            } else {
+                conn = (HttpURLConnection) new URL(url).openConnection();
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                conn.setInstanceFollowRedirects(true);
+                conn.connect();
+                if (conn.getResponseCode() >= 400) return null;
+                try (InputStream in = conn.getInputStream()) {
+                    raw = BitmapFactory.decodeStream(in);
+                }
             }
             if (raw == null) return null;
             int w = raw.getWidth();

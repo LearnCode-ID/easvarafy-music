@@ -10,6 +10,11 @@
  *     native/android) so Android shows the Spotify-style player in the notification
  *     shade and on the lock screen. The WebView does not do this on its own.
  *  4. Adequate Gradle JVM heap (`-Xmx2048m`) for CI builds.
+ *  5. Remote-hosted app (capacitor.config.ts `server.url`) with an offline
+ *     safety net: OfflineWebViewClient serves the APK's bundled copy of the web
+ *     app when there is no connection, serves downloaded songs with HTTP Range
+ *     support, and MainActivity shows a native "no internet / retry" screen
+ *     instead of Chrome's net::ERR_INTERNET_DISCONNECTED page.
  */
 import {
   copyFileSync,
@@ -97,6 +102,8 @@ if (existsSync(manifestPath)) {
     'android.permission.FOREGROUND_SERVICE',
     'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
     'android.permission.POST_NOTIFICATIONS',
+    // Offline detection (native retry screen / bundled offline app).
+    'android.permission.ACCESS_NETWORK_STATE',
     // Fallback host for the Dynamic Island ("display over other apps").
     'android.permission.SYSTEM_ALERT_WINDOW',
   ];
@@ -309,7 +316,13 @@ writeFileSync(
 
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.graphics.ImageDecoder;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.graphics.drawable.AnimatedImageDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
@@ -318,13 +331,17 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.util.DisplayMetrics;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
@@ -339,6 +356,15 @@ public class MainActivity extends BridgeActivity {
 
     private static final int REQUEST_POST_NOTIFICATIONS = 4210;
 
+    // Offline support (remote server.url + bundled offline copy)
+    private final Handler offlineHandler = new Handler(Looper.getMainLooper());
+    private OfflineWebViewClient offlineClient;
+    private FrameLayout offlineOverlay;
+    private TextView offlineTitle;
+    private TextView offlineStatus;
+    private boolean offlineOverlayVisible = false;
+    private ConnectivityManager.NetworkCallback networkCallback;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // Local plugin: native media notification + lock-screen controls.
@@ -351,6 +377,174 @@ public class MainActivity extends BridgeActivity {
             settings.setMediaPlaybackRequiresUserGesture(false);
         }
         showNativeGifSplash();
+        setupOfflineSupport();
+    }
+
+    // ------------------------------------------------------------------
+    // Offline: native retry screen + bundled offline app
+    // ------------------------------------------------------------------
+
+    private void setupOfflineSupport() {
+        if (this.bridge == null || this.bridge.getWebView() == null) return;
+        offlineClient = new OfflineWebViewClient(this.bridge, description -> showOfflineScreen());
+        this.bridge.setWebViewClient(offlineClient);
+        WebView webView = this.bridge.getWebView();
+        // The first navigation was only queued by Capacitor (main thread has not
+        // yielded yet), so re-issue it through the offline-aware client.
+        webView.stopLoading();
+        if (!NetworkState.isOnline(this) && !NetworkState.hasOfflineDownloads(this)) {
+            showOfflineScreen();
+        } else {
+            // Online -> remote app. Offline with downloads -> bundled app (Library).
+            webView.loadUrl(this.bridge.getAppUrl());
+        }
+        registerNetworkCallback();
+    }
+
+    private int dp(float value) {
+        return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics()));
+    }
+
+    private void buildOfflineOverlay() {
+        offlineOverlay = new FrameLayout(this);
+        offlineOverlay.setBackgroundColor(Color.BLACK);
+        offlineOverlay.setClickable(true);
+        offlineOverlay.setFocusable(true);
+
+        LinearLayout column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setGravity(Gravity.CENTER_HORIZONTAL);
+        column.setPadding(dp(32), dp(32), dp(32), dp(32));
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(getApplicationInfo().icon);
+        column.addView(icon, new LinearLayout.LayoutParams(dp(84), dp(84)));
+
+        offlineTitle = new TextView(this);
+        offlineTitle.setTextColor(Color.WHITE);
+        offlineTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 21);
+        offlineTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        offlineTitle.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleLp.topMargin = dp(24);
+        column.addView(offlineTitle, titleLp);
+
+        TextView body = new TextView(this);
+        body.setText("Periksa Wi-Fi atau data seluler kamu, lalu coba lagi.\\nLagu yang sudah di-download tetap bisa diputar lewat Mode Offline.");
+        body.setTextColor(0xB3FFFFFF);
+        body.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        body.setGravity(Gravity.CENTER);
+        body.setLineSpacing(0f, 1.25f);
+        LinearLayout.LayoutParams bodyLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        bodyLp.topMargin = dp(10);
+        column.addView(body, bodyLp);
+
+        Button retry = new Button(this);
+        retry.setText("Coba Lagi");
+        retry.setAllCaps(false);
+        retry.setTextColor(0xFF00174A);
+        retry.setTypeface(Typeface.DEFAULT_BOLD);
+        GradientDrawable retryBg = new GradientDrawable();
+        retryBg.setColor(0xFF8AB4FF);
+        retryBg.setCornerRadius(dp(24));
+        retry.setBackground(retryBg);
+        retry.setOnClickListener(v -> retryOnline(true));
+        LinearLayout.LayoutParams retryLp = new LinearLayout.LayoutParams(dp(240), dp(48));
+        retryLp.topMargin = dp(28);
+        column.addView(retry, retryLp);
+
+        Button offline = new Button(this);
+        offline.setText("Buka Mode Offline");
+        offline.setAllCaps(false);
+        offline.setTextColor(Color.WHITE);
+        GradientDrawable offlineBg = new GradientDrawable();
+        offlineBg.setColor(Color.TRANSPARENT);
+        offlineBg.setStroke(dp(1), 0x55FFFFFF);
+        offlineBg.setCornerRadius(dp(24));
+        offline.setBackground(offlineBg);
+        offline.setOnClickListener(v -> openOfflineMode());
+        LinearLayout.LayoutParams offlineLp = new LinearLayout.LayoutParams(dp(240), dp(48));
+        offlineLp.topMargin = dp(12);
+        column.addView(offline, offlineLp);
+
+        offlineStatus = new TextView(this);
+        offlineStatus.setTextColor(0x99FFFFFF);
+        offlineStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        offlineStatus.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        statusLp.topMargin = dp(16);
+        column.addView(offlineStatus, statusLp);
+
+        offlineOverlay.addView(column, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+
+        ViewGroup root = findViewById(android.R.id.content);
+        root.addView(offlineOverlay, new ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        offlineOverlay.setElevation(dp(16));
+    }
+
+    private void showOfflineScreen() {
+        if (isFinishing() || isDestroyed()) return;
+        dismissSplashImmediately();
+        if (offlineOverlay == null) buildOfflineOverlay();
+        boolean online = NetworkState.isOnline(this);
+        offlineTitle.setText(online ? "Server Easvarafy tidak dapat dijangkau" : "Tidak ada koneksi internet");
+        offlineStatus.setText("");
+        offlineOverlay.setVisibility(View.VISIBLE);
+        offlineOverlay.bringToFront();
+        offlineOverlayVisible = true;
+    }
+
+    private void hideOfflineScreen() {
+        offlineOverlayVisible = false;
+        if (offlineOverlay != null) offlineOverlay.setVisibility(View.GONE);
+    }
+
+    private void retryOnline(boolean manual) {
+        if (this.bridge == null || this.bridge.getWebView() == null) return;
+        if (!NetworkState.isOnline(this)) {
+            if (manual && offlineStatus != null) {
+                offlineStatus.setText("Masih belum ada koneksi. Coba lagi sebentar lagi.");
+            }
+            return;
+        }
+        if (offlineStatus != null) offlineStatus.setText("Menyambungkan…");
+        hideOfflineScreen();
+        this.bridge.getWebView().loadUrl(this.bridge.getAppUrl());
+    }
+
+    private void openOfflineMode() {
+        if (this.bridge == null || this.bridge.getWebView() == null || offlineClient == null) return;
+        offlineClient.forceOfflineNextLoad();
+        hideOfflineScreen();
+        this.bridge.getWebView().loadUrl(this.bridge.getAppUrl());
+    }
+
+    private void registerNetworkCallback() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            if (cm == null) return;
+            networkCallback = new ConnectivityManager.NetworkCallback() {
+                @Override
+                public void onCapabilitiesChanged(Network network, NetworkCapabilities caps) {
+                    if (caps == null || !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) return;
+                    offlineHandler.post(() -> {
+                        // Back online while the retry screen is up -> reload automatically.
+                        if (offlineOverlayVisible) {
+                            offlineHandler.removeCallbacksAndMessages(null);
+                            offlineHandler.postDelayed(() -> retryOnline(false), 600L);
+                        }
+                    });
+                }
+            };
+            cm.registerDefaultNetworkCallback(networkCallback);
+        } catch (Exception ignored) {
+            networkCallback = null;
+        }
     }
 
     /**
@@ -452,6 +646,16 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onDestroy() {
+        offlineHandler.removeCallbacksAndMessages(null);
+        if (networkCallback != null) {
+            try {
+                ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+                if (cm != null) cm.unregisterNetworkCallback(networkCallback);
+            } catch (Exception ignored) {
+                // already unregistered
+            }
+            networkCallback = null;
+        }
         dismissSplashImmediately();
         if (isFinishing()) {
             stopService(new Intent(this, MediaPlaybackService.class));
@@ -490,7 +694,7 @@ writeFileSync(
   'utf8'
 );
 
-console.log('✓ Configured native GIF splash screen, BackgroundWebView, and MainActivity');
+console.log('✓ Configured native GIF splash screen, BackgroundWebView, offline screen, and MainActivity');
 
 if (existsSync(gradlePropsPath)) {
   let props = readFileSync(gradlePropsPath, 'utf8');

@@ -11,6 +11,7 @@ import {
   User,
 } from 'lucide-react';
 import { useMusic } from './MusicProvider';
+import { DownloadMenuItem } from './DownloadButton';
 import type { Track } from '@/lib/metrolist/types';
 
 interface TrackContextMenuProps {
@@ -112,6 +113,8 @@ export function TrackContextMenu({ track }: TrackContextMenuProps) {
             <ListPlus className="w-4 h-4 text-slate-500 dark:text-slate-400" />
             <span>Add to Playlist</span>
           </button>
+
+          <DownloadMenuItem track={track} onDone={() => setOpen(false)} />
 
           <button
             type="button"

@@ -99,6 +99,14 @@ Secara fungsional, Easvarafy memadukan mesin rekomendasi, antrean, dan animasi l
 - **Cascading Background Popup Strategy**: Otomatis memilih mode terbaik yang didukung browser: `Document Picture-in-Picture` → `Canvas Video PiP` → `Floating Overlay`.
 - **Integrasi Media Session API**: Menampilkan metadata lagu, sampul album, posisi putar, serta tombol Play/Pause/Prev/Next pada kontrol media sistem operasi dan layar kunci, dilengkapi *visibility recovery* & koreksi drift.
 
+### 4b. Download Lagu & Mode Offline (`lib/metrolist/offlineAudio.ts`, `DownloadButton`, `OfflineDownloadsSection`)
+- **Tombol Download** di `NowPlayingSheet`, menu titik tiga (`TrackContextMenu`), hasil `SearchView`, `DetailView`, dan Liked Songs: ikon unduh → cincin progres **0–100%** (ketuk untuk batal) → centang **"Tersimpan Offline"** (ketuk untuk hapus). Maksimal 2 unduhan berjalan bersamaan, sisanya antre.
+- **Penyimpanan**: APK memakai `@capacitor/filesystem` `Directory.Data` (`offline/audio/<videoId>.<ext>`, `offline/art/`, indeks `offline/index.json`) dan memutar via `convertFileSrc`; versi web memakai **IndexedDB** (`easvarafy-offline`) + Object URL. Metadata: `videoId`, `title`, `artist`, `duration`, `localUri`, `fileSizeBytes`, `downloadedAt`, `lyrics` (lirik ikut disimpan agar tampil offline).
+- **Pemutar ganda tanpa tabrakan**: `MusicProvider` memakai elemen `<audio>` untuk lagu yang sudah diunduh (play/pause, seek, kecepatan, **Equalizer & Bass Boost via Web Audio**, Media Session/layar kunci, auto-next) dan YouTube IFrame untuk sisanya — tidak pernah berbunyi bersamaan. Saat offline, lagu yang belum diunduh dilewati otomatis.
+- **Library → tab "Offline"**: daftar *Lagu Tersimpan Offline* dengan badge ukuran file, total penyimpanan, Putar Offline / Acak, serta status unduhan yang gagal (coba lagi / tutup). **Settings → Storage & Backup**: total pemakaian + **Hapus Semua Unduhan** (konfirmasi dua kali ketuk).
+- **Service Worker** (`public/sw.js`, hanya build web produksi): *app shell* + aset `/_next/static` di-cache sehingga Library dan lagu yang diunduh tetap bisa dibuka dalam mode pesawat; halaman cadangan `public/offline.html`.
+- **Sumber audio** wajib dikonfigurasi di server (lihat [Sumber audio untuk download](#sumber-audio-untuk-download)). Jika audio sebuah lagu belum tersedia, UI menampilkan *"Audio lagu ini belum tersedia untuk diunduh. Lagu tetap bisa diputar online."* tanpa mengganggu pemutar.
+
 ### 5. Beranda Editorial, Explore, Dual-Scope Search & Library Analytics
 - **Home (`HomeView`, `HomeEditorialSections`)**: Berbagai variasi layout editorial (kartu unggulan, daftar padat, karusel album, rak bergaya majalah), filter mood (*All*, *Relax*, *Energize*, *Focus*, *Workout*, *Commute*, *Sad*), strip genre, *Quick Picks* (menjaga invarian filter `hideVideoSongs` sebelum slicing), *Keep Listening*, dan *Forgotten Favorites*.
 - **Explore (`ChartsView`)**: Strip ubin interaktif **Moods & Genres**, tombol aksi *Play Chart* & *Shuffle*, kartu **Top 3 Podium** asimetris, daftar peringkat penuh `#4+`, dan karusel **New Releases**.
@@ -190,7 +198,32 @@ NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 # opsional, hanya untuk build APK (static export):
 NEXT_PUBLIC_API_BASE=https://<domain-web-kamu>
+# opsional, host yang dimuat APK (default https://easvarafy-music.vercel.app):
+CAPACITOR_SERVER_URL=https://<domain-web-kamu>
+# sumber audio untuk fitur download (lihat bagian di bawah):
+AUDIO_SOURCE_URL_TEMPLATE=https://cdn.domain-kamu/audio/{videoId}.mp3
+AUDIO_STORAGE_BUCKET=offline-audio
+AUDIO_STORAGE_DISABLED=0
 ```
+
+### Sumber audio untuk download
+
+Endpoint `/api/music/audio` **tidak** mengekstrak audio dari YouTube (melanggar
+ToS YouTube). Ia meneruskan (*proxy*, dengan CORS + HTTP Range) file audio dari
+sumber yang kamu miliki/berlisensi, dicoba berurutan:
+
+1. **`AUDIO_SOURCE_URL_TEMPLATE`**: satu atau beberapa URL (pisahkan koma) dengan
+   placeholder `{videoId}`, `{title}`, `{artist}`. Contoh:
+   `https://cdn.domain-kamu/audio/{videoId}.mp3,https://cadangan.domain-kamu/{videoId}.m4a`.
+2. **Supabase Storage**: bucket publik `AUDIO_STORAGE_BUCKET` (default
+   `offline-audio`) berisi `<videoId>.mp3` / `.m4a` / `.opus` / `.webm`. Matikan
+   dengan `AUDIO_STORAGE_DISABLED=1`.
+
+| Permintaan | Hasil |
+| --- | --- |
+| `GET /api/music/audio?videoId=…&title=…&artist=…` | stream audio (`206` jika Range), header `X-Audio-Source`, `X-Audio-Length` |
+| `GET …&resolve=1` | JSON `{ ok, url, contentType, contentLength, source }` |
+| gagal | JSON `{ ok:false, error, message }`: `invalid_video_id` (400), `audio_source_not_configured` / `audio_unavailable` (404), `audio_upstream_failed` (502) |
 
 Di dashboard Supabase → Authentication → URL Configuration, tambahkan
 `https://<domain>/auth/callback`, `https://<domain>/reset-password`, dan
@@ -293,7 +326,11 @@ Supabase → khusus APK): **[`docs/AUTH_SETUP.md`](./docs/AUTH_SETUP.md)**.
 │   │   ├── theme.ts                 # Resolver tema Dark/Light/AMOLED & ekstraksi Dynamic Color
 │   │   ├── logic.test.ts            # Unit test rekomendasi, antrean, tema, & background popup
 │   │   ├── lyricsEngine.test.ts     # Unit test parser enhanced word timing & 5 gaya animasi lirik
-│   │   └── statsEngine.test.ts      # Unit test statistik, Auto Top Mixes, pencarian lokal, & EQ
+│   │   ├── statsEngine.test.ts      # Unit test statistik, Auto Top Mixes, pencarian lokal, & EQ
+│   │   ├── offlineQueue.ts          # Logika murni antrean unduhan, indeks offline, progres, & pesan error
+│   │   ├── offlineAudio.ts          # Penyimpanan lagu offline (Filesystem Directory.Data / IndexedDB)
+│   │   ├── useOfflineLibrary.ts     # Hook React status unduhan & koneksi online/offline
+│   │   └── offlineQueue.test.ts     # Unit test antrean unduhan, indeks offline, & sumber audio
 │   ├── liquid-glass/
 │   │   ├── refraction.ts            # Matematika Hukum Snell, convex squircle, displacement & specular map
 │   │   └── refraction.test.ts       # Unit test fisika refraksi & pembangkitan peta SVG
@@ -331,6 +368,7 @@ Seluruh pemanggilan ke `ytmusic-api` dan `LRCLIB` dijalankan pada **Next.js API 
 | `/api/music/detail` | `GET` | `kind` (`album`\|`playlist`\|`artist`), `id`, `gl` | Memuat daftar lagu lengkap dan metadata untuk Album, Playlist YouTube Music, atau halaman Artis (top songs, albums, singles, featured playlists). |
 | `/api/music/up-next` | `GET` | `videoId`, `gl` | Mengambil daftar lagu lanjutan (*Up Next / Auto Radio*) berdasarkan `videoId` aktif. |
 | `/api/music/lyrics` | `GET` | `videoId`, `title`, `artist`, `duration` | Resolusi lirik berjenjang: YouTube Music Timed Lyrics → LRCLIB Synced/Plain Lyrics → YouTube Music Plain Lyrics. |
+| `/api/music/audio` | `GET`/`HEAD`/`OPTIONS` | `videoId`, `title`, `artist`, `resolve=1`, Header `Range` | Proxy file audio untuk fitur download dari sumber yang dikonfigurasi (lihat [Sumber audio untuk download](#sumber-audio-untuk-download)). |
 
 ---
 
@@ -388,27 +426,53 @@ npm run clean
 
 Logika inti aplikasi dipisahkan dari komponen UI dan diuji menggunakan test runner bawaan Node (`node:test` + `node:assert/strict`) melalui `tsx`.
 
-Jalankan seluruh rangkaian unit test (26 pengujian):
+Jalankan seluruh rangkaian unit test (40 pengujian):
 
 ```bash
 npx --yes tsx --test \
   lib/metrolist/logic.test.ts \
   lib/metrolist/lyricsEngine.test.ts \
   lib/metrolist/statsEngine.test.ts \
-  lib/liquid-glass/refraction.test.ts
+  lib/liquid-glass/refraction.test.ts \
+  lib/metrolist/offlineQueue.test.ts
 ```
 
-### Cakupan Pengujian (`26/26 Pass`)
+### Cakupan Pengujian (`40/40 Pass`)
 - **`lib/liquid-glass/refraction.test.ts` (5 tes)**: Validasi profil *convex squircle*, profil pembiasan Hukum Snell (`n = 1.0` vs `n = 1.5`), simetri peta perpindahan 2D, peta *specular rim highlight*, serta preset `pill`/`orb`/`droplet`.
 - **`lib/metrolist/logic.test.ts` (9 tes)**: Validasi filter `hideVideoSongs` sebelum slicing *Quick Picks*, deduplikasi `videoId`, *Keep Listening*, *Forgotten Favorites*, *QueueEngine* (*playNext*, *append*, *shuffle pin*, *repeat*, *radio deduplication*), parser LRC, resolver tema AMOLED/Dynamic Color, dan strategi *Background Popup*.
 - **`lib/metrolist/lyricsEngine.test.ts` (5 tes)**: Validasi parsing enhanced word timestamps `<mm:ss.xx>`, global offset, fisika 5 gaya animasi lirik (*Apple*, *Braccato*, *Expressive*, *Simple*, *None*), *progressive blur*, dan generator jalur SVG *Squiggly Seekbar*.
 - **`lib/metrolist/statsEngine.test.ts` (7 tes)**: Validasi filter periode statistik (`7d`, `30d`, `year`, `all`), agregasi menit & porsi artis, pencarian pustaka lokal + tag, pengurutan track, pembangkitan **Auto Top Mixes** (*My Top Mix*, *On Repeat*, *Rediscover*), total durasi, serta helper **Equalizer**.
+- **`lib/metrolist/offlineQueue.test.ts` (14 tes)**: Validasi antrean unduhan (FIFO, dedupe, batas 2 unduhan paralel, retry setelah gagal), progres 0–100%, `formatBytes`, nama file dari MIME, indeks offline (upsert/hapus/serialisasi, data rusak diabaikan), pesan error berbahasa Indonesia, encoding base64 berpotongan, serta resolver sumber audio (`AUDIO_SOURCE_URL_TEMPLATE`, Supabase Storage, deteksi file non-audio).
 
 ---
 
 ## Build APK Android (Capacitor)
 
-Aplikasi Android dibangun dari **static export** Next.js lalu dibungkus Capacitor.
+**APK = web live + jaring pengaman offline.** `capacitor.config.ts` memakai
+`server.url = process.env.CAPACITOR_SERVER_URL || 'https://easvarafy-music.vercel.app'`
+(`cleartext: false`), jadi APK selalu memuat versi web terbaru: setiap deploy web
+(merge ke `main` → Vercel) langsung muncul di aplikasi **tanpa install ulang APK**.
+Ganti ke domain sendiri cukup dengan secret/env `CAPACITOR_SERVER_URL`
+(harus `https://`; nilai `bundled` membuat APK lokal penuh seperti dulu).
+
+Static export (`out/`) tetap dibundel ke dalam APK sebagai cadangan offline:
+
+- **Tanpa internet saat membuka app** → `OfflineWebViewClient` (native) menyajikan
+  salinan web dari dalam APK pada origin yang sama, sehingga Library dan lagu yang
+  sudah diunduh tetap bisa diputar dalam mode pesawat.
+- **Belum ada lagu diunduh / server tidak terjangkau** → layar native
+  *"Tidak ada koneksi internet"* dengan tombol **Coba Lagi** dan **Buka Mode
+  Offline** (bukan halaman `net::ERR_INTERNET_DISCONNECTED`). Saat koneksi kembali,
+  aplikasi memuat ulang otomatis.
+- File lagu yang diunduh disajikan dengan dukungan **HTTP Range** agar seek lancar.
+- Splash GIF native, ikon dari `favicon.ico`, notifikasi media/layar kunci
+  (`MediaPlaybackService` + `BackgroundWebView`), Dynamic Island, dan deep link
+  OAuth `com.easvarafy.app://auth/callback` tetap berjalan.
+
+> Karena APK memuat web produksi, fitur baru di APK baru terlihat setelah
+> perubahan di-merge ke `main` dan ter-deploy di Vercel.
+
+Langkah build manual:
 
 ```bash
 # 1. build static ke ./out  (route server dipindah sementara, selalu dipulihkan)
@@ -424,7 +488,7 @@ cd android && ./gradlew assembleDebug
 ```
 
 Konfigurasi: `capacitor.config.ts` (`appId: com.easvarafy.app`, `webDir: out`,
-`androidScheme: https`).
+`server.url` dari `CAPACITOR_SERVER_URL`, `androidScheme: https`).
 
 **Login Google di APK.** `signInWithOAuth` dibuka lewat `@capacitor/browser`;
 Supabase lalu redirect ke deep link `com.easvarafy.app://auth/callback` yang
@@ -451,6 +515,7 @@ Tambahkan **GitHub Secrets**:
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://<project-ref>.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon/publishable key |
 | `NEXT_PUBLIC_API_BASE` | domain web Easvarafy (untuk route musik) |
+| `CAPACITOR_SERVER_URL` | opsional; host web yang dimuat APK (default `https://easvarafy-music.vercel.app`) |
 
 ---
 

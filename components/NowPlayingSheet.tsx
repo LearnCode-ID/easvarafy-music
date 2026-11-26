@@ -40,6 +40,7 @@ import { AodPlayerOverlay } from './AodPlayerOverlay';
 import { ArtworkImage } from './ArtworkImage';
 import { EqualizerSheet, SleepTimerSheet } from './AudioToolsModals';
 import { LyricsShareModal } from './LyricsShareModal';
+import { DownloadButton } from './DownloadButton';
 import { useMusic, type UpNextMode } from './MusicProvider';
 import { PlayerBackground } from './PlayerBackground';
 import { PlayerSlider } from './PlayerSlider';
@@ -96,6 +97,7 @@ export function NowPlayingSheet() {
     setShowVideoStage,
     popupMode,
     toggleBackgroundPopup,
+    playbackSource,
   } = useMusic();
 
   const [aodOpen, setAodOpen] = useState(false);
@@ -354,6 +356,18 @@ export function NowPlayingSheet() {
                           </>
                         )}
                       </p>
+                      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                        <DownloadButton track={currentTrack} variant="pill" />
+                        {playbackSource === 'offline' && (
+                          <span
+                            data-testid="offline-playback-chip"
+                            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true" />
+                            Memutar dari file offline
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">

@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import {
+  ArrowDownToLine,
   ArrowUpDown,
   BarChart3,
   Clock,
@@ -25,6 +26,8 @@ import { ArtworkImage } from './ArtworkImage';
 import { useMusic } from './MusicProvider';
 import { StatsView } from './StatsView';
 import { TrackContextMenu } from './TrackContextMenu';
+import { DownloadButton } from './DownloadButton';
+import { OfflineDownloadsSection } from './OfflineDownloadsSection';
 import { formatDuration } from '@/lib/metrolist/lyrics';
 import {
   buildAutoTopMixes,
@@ -35,7 +38,7 @@ import {
 import { cn } from '@/lib/utils';
 import { apiUrl } from '@/lib/api/base';
 
-type LibraryTab = 'playlists' | 'liked' | 'history' | 'stats' | 'saved';
+type LibraryTab = 'playlists' | 'liked' | 'history' | 'stats' | 'saved' | 'downloads';
 type ViewLayout = 'grid' | 'list';
 
 function extractPlaylistId(input: string): string {
@@ -76,7 +79,10 @@ export function LibraryView() {
     showToast,
   } = useMusic();
 
-  const [tab, setTab] = useState<LibraryTab>('playlists');
+  // Without internet, open straight on the downloaded songs.
+  const [tab, setTab] = useState<LibraryTab>(() =>
+    typeof navigator !== 'undefined' && navigator.onLine === false ? 'downloads' : 'playlists'
+  );
   const [viewMode, setViewMode] = useState<ViewLayout>('grid');
   const [sortMode, setSortMode] = useState<LibraryTrackSortMode>('recent');
   const [localFilter, setLocalFilter] = useState('');
@@ -200,7 +206,7 @@ export function LibraryView() {
           </p>
         </div>
 
-        {/* Expressive 5-Tab Switcher */}
+        {/* Expressive 6-Tab Switcher */}
         <div
           role="tablist"
           aria-label="Library sections"
@@ -213,6 +219,7 @@ export function LibraryView() {
               { id: 'history', label: 'History', icon: Clock },
               { id: 'stats', label: 'Stats', icon: BarChart3 },
               { id: 'saved', label: 'Saved', icon: FolderHeart },
+              { id: 'downloads', label: 'Offline', icon: ArrowDownToLine },
             ] as const
           ).map((item) => {
             const Icon = item.icon;
@@ -242,6 +249,9 @@ export function LibraryView() {
 
       {/* Stats & Year-in-Music Recap Tab */}
       {tab === 'stats' && <StatsView />}
+
+      {/* Downloads: Lagu Tersimpan Offline */}
+      {tab === 'downloads' && <OfflineDownloadsSection />}
 
       {/* Local Filter + Sort + View Toggle Bar (for Playlists / Liked / History / Saved) */}
       {tab !== 'stats' && (
@@ -758,6 +768,7 @@ export function LibraryView() {
                         </p>
                       </div>
                     </button>
+                    <DownloadButton track={track} />
                     <TrackContextMenu track={track} />
                   </div>
                 );

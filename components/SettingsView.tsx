@@ -48,6 +48,8 @@ import {
   X,
 } from 'lucide-react';
 import { useMusic } from './MusicProvider';
+import { clearAllDownloads, formatBytes, getOfflineStorageUsage } from '@/lib/metrolist/offlineAudio';
+import { useOfflineLibrary } from '@/lib/metrolist/useOfflineLibrary';
 import { AccountSettingsSection } from './AccountSettingsSection';
 import {
   openNativeIslandSettings,
@@ -267,6 +269,81 @@ function PreferenceRow({
       </div>
       {trailing && <div className="shrink-0">{trailing}</div>}
     </Wrapper>
+  );
+}
+
+/** Storage used by downloaded songs + "hapus semua unduhan". */
+function OfflineDownloadsSettings() {
+  const { showToast, setActiveTab } = useMusic();
+  const { records, totalBytes, queue } = useOfflineLibrary();
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [quota, setQuota] = useState<number | null>(null);
+  const activeJobs = queue.order.length;
+
+  React.useEffect(() => {
+    let alive = true;
+    void getOfflineStorageUsage().then((u) => {
+      if (alive) setQuota(u.quotaBytes);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [records.length]);
+
+  return (
+    <>
+      <PreferenceRow
+        icon={HardDrive}
+        title="Lagu Tersimpan Offline"
+        description={`${records.length} lagu · ${formatBytes(totalBytes)}${
+          quota ? ` dari ~${formatBytes(quota)} tersedia` : ''
+        }${activeJobs > 0 ? ` · ${activeJobs} sedang diunduh` : ''}`}
+        onClick={() => setActiveTab('library')}
+        trailing={
+          <span className="px-3.5 py-1.5 rounded-full bg-[var(--m3-primary)]/14 text-[var(--m3-primary)] text-[12px] font-semibold">
+            Library
+          </span>
+        }
+      />
+      <PreferenceRow
+        icon={Trash2}
+        title="Hapus Semua Unduhan"
+        description={
+          records.length > 0
+            ? confirming
+              ? 'Ketuk sekali lagi untuk menghapus semua file lagu offline'
+              : `Kosongkan ${formatBytes(totalBytes)} penyimpanan lagu offline`
+            : 'Belum ada lagu yang diunduh'
+        }
+        accentTint="#F43F5E"
+        trailing={
+          <button
+            type="button"
+            data-testid="clear-all-downloads"
+            disabled={busy || (records.length === 0 && activeJobs === 0)}
+            onClick={() => {
+              if (!confirming) {
+                setConfirming(true);
+                setTimeout(() => setConfirming(false), 4000);
+                return;
+              }
+              setBusy(true);
+              clearAllDownloads()
+                .then(() => showToast('Semua unduhan dihapus'))
+                .catch(() => showToast('Gagal menghapus unduhan'))
+                .finally(() => {
+                  setBusy(false);
+                  setConfirming(false);
+                });
+            }}
+            className="px-3.5 h-8 rounded-full text-[12px] font-semibold bg-rose-500/12 text-rose-500 hover:bg-rose-500/20 disabled:opacity-35 disabled:cursor-not-allowed transition-colors"
+          >
+            {busy ? 'Menghapus…' : confirming ? 'Yakin?' : 'Hapus Semua'}
+          </button>
+        }
+      />
+    </>
   );
 }
 
@@ -1896,7 +1973,7 @@ export function SettingsView() {
       {/* 4. STORAGE & BACKUP */}
       {showSection(
         'storage',
-        'storage backup restore export import json history search liked playlists reset clear'
+        'storage backup restore export import json history search liked playlists reset clear offline download unduhan'
       ) && (
         <section className="space-y-2.5">
           <h2 className="px-1 text-[12px] font-bold uppercase tracking-wider text-[var(--m3-primary)]">
@@ -1953,6 +2030,9 @@ export function SettingsView() {
                 </div>
               </div>
             </div>
+
+            {/* Offline downloads */}
+            <OfflineDownloadsSettings />
 
             {/* Backup & Restore (Real JSON Export / Import) */}
             <PreferenceRow
