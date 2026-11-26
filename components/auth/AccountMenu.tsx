@@ -180,10 +180,13 @@ export function MobileAccountButton() {
     return (
       <Link
         href="/login"
-        className="min-h-[40px] px-3.5 rounded-full bg-[var(--m3-primary)] text-[var(--m3-on-primary)] text-[13px] font-semibold inline-flex items-center gap-1.5"
+        aria-label="Masuk"
+        title="Masuk"
+        className="min-h-[40px] min-w-[40px] px-3 min-[440px]:px-3.5 rounded-full bg-[var(--m3-primary)] text-[var(--m3-on-primary)] text-[13px] font-semibold inline-flex items-center justify-center gap-1.5"
       >
         <LogIn className="w-4 h-4" />
-        Masuk
+        {/* Icon-only on narrow phones so the top-center Dynamic Island never covers the buttons */}
+        <span className="hidden min-[440px]:inline">Masuk</span>
       </Link>
     );
   }

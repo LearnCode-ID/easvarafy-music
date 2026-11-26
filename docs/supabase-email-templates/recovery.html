@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="id" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="color-scheme" content="dark">
+<meta name="supported-color-schemes" content="dark">
+<title>Easvarafy</title>
+<style>
+  body { margin:0; padding:0; background:#0B0B10; }
+  a { color:#7C5CFF; }
+  @media only screen and (max-width:620px) {
+    .container { width:100% !important; }
+    .px { padding-left:22px !important; padding-right:22px !important; }
+    .h1 { font-size:24px !important; line-height:31px !important; }
+    .btn a { display:block !important; }
+    .code { font-size:30px !important; letter-spacing:6px !important; }
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background:#0B0B10;-webkit-text-size-adjust:100%;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#0B0B10;">Atur ulang password akun Easvarafy kamu.&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0B0B10;">
+  <tr>
+    <td align="center" style="padding:32px 12px;">
+      <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;">
+        <!-- Brand -->
+        <tr>
+          <td class="px" style="padding:0 36px 22px 36px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td width="40" height="40" align="center" valign="middle" style="width:40px;height:40px;border-radius:12px;background:#7C5CFF;background-image:linear-gradient(135deg,#7C5CFF 0%,#5B8CFF 55%,#22D3C5 100%);color:#FFFFFF;font:700 20px/40px Arial,Helvetica,sans-serif;">&#9835;</td>
+                <td style="padding-left:12px;font:700 20px/24px 'Plus Jakarta Sans',Segoe UI,Arial,Helvetica,sans-serif;color:#FFFFFF;letter-spacing:-0.2px;">Easvarafy<br><span style="font:500 11px/16px Arial,Helvetica,sans-serif;color:#8E8AA8;letter-spacing:0.4px;">Dengerin Musik Tanpa Batas</span></td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <!-- Card -->
+        <tr>
+          <td style="background:#15151D;border:1px solid #262338;border-radius:24px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="height:4px;line-height:4px;font-size:0;border-radius:24px 24px 0 0;background:#7C5CFF;background-image:linear-gradient(90deg,#7C5CFF,#5B8CFF,#22D3C5);">&nbsp;</td></tr>
+              <tr>
+                <td class="px" style="padding:34px 40px 8px 40px;">
+                  <p style="margin:0 0 10px 0;font:700 11px/16px Arial,Helvetica,sans-serif;letter-spacing:1.6px;text-transform:uppercase;color:#7C5CFF;">Reset password</p>
+                  <h1 class="h1" style="margin:0 0 14px 0;font:700 27px/35px 'Plus Jakarta Sans',Segoe UI,Arial,Helvetica,sans-serif;color:#FFFFFF;letter-spacing:-0.4px;">Lupa password? Tenang.</h1>
+                  <div style="margin:0;font:400 15px/25px 'DM Sans',Segoe UI,Arial,Helvetica,sans-serif;color:#C9C6DC;">Kami menerima permintaan untuk mengatur ulang password akun <strong style="color:#FFFFFF;">{{ .Email }}</strong>. Ketuk tombol di bawah untuk membuat password baru.</div>
+                </td>
+              </tr>
+              <tr>
+                <td class="px" style="padding:22px 40px 8px 40px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" class="btn">
+                    <tr>
+                      <td align="center" bgcolor="#7C5CFF" style="border-radius:999px;background:#7C5CFF;">
+                        <a href="{{ .ConfirmationURL }}" target="_blank" style="display:inline-block;padding:15px 34px;font:700 15px/20px 'Plus Jakarta Sans',Segoe UI,Arial,Helvetica,sans-serif;color:#FFFFFF;text-decoration:none;border-radius:999px;">Atur Ulang Password</a>
+                      </td>
+                    </tr>
+                  </table>
+                  <p style="margin:22px 0 6px 0;font:400 12.5px/19px 'DM Sans',Segoe UI,Arial,Helvetica,sans-serif;color:#8E8AA8;">Tombol tidak berfungsi? Salin dan buka link ini di browser:</p>
+                  <p style="margin:0;padding:12px 14px;background:#0F0F16;border:1px solid #262338;border-radius:12px;font:400 12px/18px 'JetBrains Mono',Consolas,monospace;word-break:break-all;"><a href="{{ .ConfirmationURL }}" style="color:#B8A6FF;text-decoration:none;">{{ .ConfirmationURL }}</a></p>
+                </td>
+              </tr>
+              <tr>
+                <td class="px" style="padding:18px 40px 34px 40px;">
+                  <div style="font:400 13px/21px 'DM Sans',Segoe UI,Arial,Helvetica,sans-serif;color:#8E8AA8;">Link ini berlaku selama <strong style="color:#C9C6DC;">60 menit</strong> dan hanya bisa dipakai sekali. Kalau kamu tidak meminta reset password, abaikan email ini &mdash; password lamamu tetap berlaku.</div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <!-- Footer -->
+        <tr>
+          <td class="px" align="center" style="padding:24px 36px 0 36px;font:400 12px/19px Arial,Helvetica,sans-serif;color:#6E6A86;">
+            Email ini dikirim otomatis oleh Easvarafy untuk keamanan akunmu. Mohon jangan membalas email ini.<br>
+            <a href="https://easvarafy.learncode.web.id" style="color:#9C86FF;text-decoration:none;">easvarafy.learncode.web.id</a> &nbsp;&middot;&nbsp; &copy; Easvarafy Music
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

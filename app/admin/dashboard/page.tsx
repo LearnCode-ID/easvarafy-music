@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   ArrowRight,
   Ban,
+  BellRing,
   ShieldCheck,
   TrendingUp,
   UserPlus,
@@ -13,6 +14,9 @@ import {
 import { Badge, EmptyState, StatCard } from '@/components/admin/AdminUI';
 import { VerifiedBadge } from '@/components/auth/VerifiedBadge';
 import { getUserStats, listUsers, type UserStats } from '@/lib/admin/users';
+import { getNotificationStats, listBroadcasts, type BroadcastRecord, type NotificationStats } from '@/lib/admin/notifications';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { categoryMeta, formatRelativeTime } from '@/lib/notifications/shared';
 import type { Profile } from '@/lib/auth/types';
 import { displayNameOf, initialsOf, roleLabelOf } from '@/lib/auth/types';
 
@@ -155,6 +159,8 @@ export default function AdminDashboardPage() {
         </div>
 
         <div className="lg:col-span-2 space-y-4">
+          <NotificationsSummaryCard />
+
           <div className="rounded-2xl border border-[var(--m3-border)] bg-[var(--m3-surface)] p-4">
             <h2 className="text-[14px] font-bold mb-2">Akses admin</h2>
             <p className="text-[12px] text-slate-500 dark:text-slate-400 leading-relaxed">
@@ -181,6 +187,67 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+/** Admin-only summary of broadcast notifications (hidden for every other role). */
+function NotificationsSummaryCard() {
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
+  const [stats, setStats] = useState<NotificationStats | null>(null);
+  const [last, setLast] = useState<BroadcastRecord | null>(null);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let alive = true;
+    void Promise.all([getNotificationStats(), listBroadcasts(1)]).then(([s, list]) => {
+      if (!alive) return;
+      setStats(s.stats);
+      setLast(list.rows[0] ?? null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [isAdmin]);
+
+  if (!isAdmin) return null;
+  return (
+    <div
+      className="rounded-2xl border border-[#7C5CFF]/30 bg-gradient-to-br from-[#7C5CFF]/[0.12] to-transparent p-4"
+      data-testid="dashboard-notifications-card"
+    >
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-[14px] font-bold inline-flex items-center gap-2">
+          <BellRing className="w-4 h-4 text-[#7C5CFF]" /> Notifikasi
+        </h2>
+        <Badge tone="admin">Khusus admin</Badge>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-center my-3">
+        <div>
+          <p className="text-[18px] font-bold tabular-nums">{stats?.active_24h ?? '—'}</p>
+          <p className="text-[10.5px] text-slate-500 dark:text-slate-400">Aktif 24 jam</p>
+        </div>
+        <div>
+          <p className="text-[18px] font-bold tabular-nums">{stats?.devices_total ?? '—'}</p>
+          <p className="text-[10.5px] text-slate-500 dark:text-slate-400">Perangkat</p>
+        </div>
+        <div>
+          <p className="text-[18px] font-bold tabular-nums">{stats?.broadcasts_7d ?? '—'}</p>
+          <p className="text-[10.5px] text-slate-500 dark:text-slate-400">Broadcast 7 hari</p>
+        </div>
+      </div>
+      <p className="text-[12px] text-slate-500 dark:text-slate-400 truncate">
+        {last
+          ? `Terakhir: ${categoryMeta(last.category).label} · "${last.title}" · ${formatRelativeTime(last.created_at)}`
+          : 'Belum ada notifikasi yang dikirim.'}
+      </p>
+      <Link
+        href="/admin/notifications"
+        className="mt-3 inline-flex items-center gap-1.5 min-h-[40px] px-4 rounded-full bg-[#7C5CFF] text-white text-[12.5px] font-semibold"
+      >
+        Kirim notifikasi <ArrowRight className="w-3.5 h-3.5" />
+      </Link>
     </div>
   );
 }

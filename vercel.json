@@ -4,17 +4,46 @@
   "functions": {
     "app/api/music/**/*.ts": {
       "maxDuration": 25
+    },
+    "app/api/app/**/*.ts": {
+      "maxDuration": 10
+    },
+    "app/api/admin/**/*.ts": {
+      "maxDuration": 60
     }
   },
   "headers": [
     {
       "source": "/api/music/(.*)",
       "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, OPTIONS"
+        },
         {
           "key": "Access-Control-Allow-Headers",
           "value": "Content-Type, Authorization, x-yt-cookie"
+        }
+      ]
+    },
+    {
+      "source": "/api/app/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization"
         }
       ]
     }

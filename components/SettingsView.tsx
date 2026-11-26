@@ -51,6 +51,7 @@ import { useMusic } from './MusicProvider';
 import { clearAllDownloads, formatBytes, getOfflineStorageUsage } from '@/lib/metrolist/offlineAudio';
 import { useOfflineLibrary } from '@/lib/metrolist/useOfflineLibrary';
 import { AccountSettingsSection } from './AccountSettingsSection';
+import { AppUpdateSettingsCard } from './AppUpdateSettingsCard';
 import {
   openNativeIslandSettings,
   setNativeIslandEnabled,
@@ -2131,11 +2132,12 @@ export function SettingsView() {
       )}
 
       {/* 5. ABOUT */}
-      {showSection('about', 'about sonara version ytmusic-api vercel') && (
+      {showSection('about', 'about sonara version ytmusic-api vercel update pembaruan versi cek') && (
         <section className="space-y-2.5">
           <h2 className="px-1 text-[12px] font-bold uppercase tracking-wider text-[var(--m3-primary)]">
             About
           </h2>
+          <AppUpdateSettingsCard />
           <div className="rounded-[24px] metro-surface p-4 flex items-center gap-3.5">
             <span
               className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"

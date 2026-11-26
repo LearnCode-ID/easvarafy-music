@@ -1,0 +1,78 @@
+{
+  "$comment": "Supabase Auth email templates (Bahasa Indonesia). Apply with: SUPABASE_ACCESS_TOKEN=... node scripts/apply-email-templates.mjs",
+  "project_ref": "kxvckczujvwvfkykofzc",
+  "templates": [
+    {
+      "key": "confirmation",
+      "kind": "auth",
+      "subject": "Konfirmasi email kamu untuk Easvarafy",
+      "file": "confirmation.html"
+    },
+    {
+      "key": "invite",
+      "kind": "auth",
+      "subject": "Kamu diundang bergabung di Easvarafy",
+      "file": "invite.html"
+    },
+    {
+      "key": "magic_link",
+      "kind": "auth",
+      "subject": "Link masuk Easvarafy kamu",
+      "file": "magic_link.html"
+    },
+    {
+      "key": "reauthentication",
+      "kind": "auth",
+      "subject": "Kode verifikasi Easvarafy kamu",
+      "file": "reauthentication.html"
+    },
+    {
+      "key": "recovery",
+      "kind": "auth",
+      "subject": "Reset password akun Easvarafy",
+      "file": "recovery.html"
+    },
+    {
+      "key": "email_change",
+      "kind": "auth",
+      "subject": "Konfirmasi perubahan email akun Easvarafy",
+      "file": "email_change.html"
+    },
+    {
+      "key": "password_changed",
+      "kind": "notification",
+      "subject": "Password akun Easvarafy kamu telah diubah",
+      "file": "password_changed.html"
+    },
+    {
+      "key": "email_changed",
+      "kind": "notification",
+      "subject": "Email akun Easvarafy kamu telah diubah",
+      "file": "email_changed.html"
+    },
+    {
+      "key": "identity_linked",
+      "kind": "notification",
+      "subject": "Metode masuk baru ditautkan ke akun Easvarafy",
+      "file": "identity_linked.html"
+    },
+    {
+      "key": "identity_unlinked",
+      "kind": "notification",
+      "subject": "Metode masuk dilepas dari akun Easvarafy",
+      "file": "identity_unlinked.html"
+    },
+    {
+      "key": "mfa_factor_enrolled",
+      "kind": "notification",
+      "subject": "Verifikasi dua langkah ditambahkan ke akun Easvarafy",
+      "file": "mfa_factor_enrolled.html"
+    },
+    {
+      "key": "mfa_factor_unenrolled",
+      "kind": "notification",
+      "subject": "Verifikasi dua langkah dihapus dari akun Easvarafy",
+      "file": "mfa_factor_unenrolled.html"
+    }
+  ]
+}

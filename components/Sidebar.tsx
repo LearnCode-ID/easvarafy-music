@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useMusic } from './MusicProvider';
 import { SidebarAccount } from './auth/AccountMenu';
+import { NotificationBell } from './notifications/NotificationBell';
 import type { NavTab } from '@/lib/metrolist/types';
 import { cn } from '@/lib/utils';
 
@@ -50,6 +51,7 @@ export function Sidebar() {
           >
             Easvarafy
           </button>
+          <NotificationBell variant="sidebar" />
         </div>
 
         {/* Main Navigation */}

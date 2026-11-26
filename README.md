@@ -107,6 +107,32 @@ Secara fungsional, Easvarafy memadukan mesin rekomendasi, antrean, dan animasi l
 - **Service Worker** (`public/sw.js`, hanya build web produksi): *app shell* + aset `/_next/static` di-cache sehingga Library dan lagu yang diunduh tetap bisa dibuka dalam mode pesawat; halaman cadangan `public/offline.html`.
 - **Sumber audio** wajib dikonfigurasi di server (lihat [Sumber audio untuk download](#sumber-audio-untuk-download)). Jika audio sebuah lagu belum tersedia, UI menampilkan *"Audio lagu ini belum tersedia untuk diunduh. Lagu tetap bisa diputar online."* tanpa mengganggu pemutar.
 
+### 4c. Notifikasi Broadcast, Popup Update & "Easvarafy has been updated"
+- **Lonceng notifikasi** (`components/notifications/NotificationBell`) di top bar mobile (di kiri slot Dynamic Island, jadi tidak tertutup) dan di sidebar desktop. Ada badge belum dibaca, inbox riwayat (judul, isi, gambar, kategori, waktu relatif), **Tandai dibaca**, dan banner masuk di dalam aplikasi. Mengetuk notifikasi membuka tujuannya: `/`, `/explore`, `/search`, `/?tab=charts|library|settings` berpindah tab; `https://…` dibuka di *in-app browser*.
+- **Admin → Notifikasi** (`/admin/notifications`, **khusus admin**; developer/user ditolak di UI, route API, dan RLS) berisi editor dengan kategori (Pengumuman/Story/Rilis Baru/Promo/Update), gambar `https://` opsional, tujuan saat diketuk, target (Semua / Login saja / Role), **pratinjau Android langsung**, statistik perangkat, serta riwayat dengan jumlah target/diterima/dibaca dan status push.
+- **Jalur pengiriman**, dari yang paling cepat:
+  1. **Push FCM**, bila `FIREBASE_SERVICE_ACCOUNT_JSON` diset dan perangkat sudah punya token.
+  2. **Poller Android native** (`NotificationPollJobService`, ±15 menit lewat JobScheduler), yang tetap jalan saat aplikasi ditutup, **tanpa FCM**. Notifikasi gambar memakai BigPicture di channel `easvarafy_broadcast_channel`.
+  3. **Supabase Realtime + polling** saat aplikasi terbuka atau sedang memutar musik di latar belakang.
+  4. **Inbox lonceng** sebagai riwayat.
+- **Popup "Easvarafy versi baru tersedia"** (`components/AppUpdateModal.tsx`, khusus APK): mengecek `GET /api/app/version` saat aplikasi dibuka dan saat kembali ke foreground (maksimal tiap 6 jam). Tombol **Update Sekarang** membuka `https://easvarafy.learncode.web.id` di dalam aplikasi; **Nanti** menunda popup 24 jam untuk versi itu, dan `forceUpdate`/`minVersion` membuat popup tidak bisa ditutup. **Settings → Tentang → Cek Pembaruan** memeriksa secara manual (di web selalu "otomatis terbaru").
+- **Notifikasi "Easvarafy has been updated"** (native, channel `easvarafy_updates_channel`): muncul sekali setelah APK baru dipasang (versionCode berubah).
+- **Versi APK**: CI mengisi `versionCode = github.run_number` dan `versionName = package.json version` (sekarang **1.1.0**). Rilis GitHub bertag `v<version>-build.<run>`, yang otomatis dibaca oleh `/api/app/version`.
+
+| Variabel (server/Vercel) | Fungsi |
+| --- | --- |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | JSON service account Firebase (project `easvarafy-music`) untuk push FCM. Tanpa ini status push `skipped` dan perangkat tetap menerima lewat poller dan realtime. |
+| `APP_LATEST_VERSION` / `APP_LATEST_BUILD` | Paksa versi terbaru. Bila kosong, diambil dari GitHub Release terbaru, lalu `package.json`. |
+| `APP_MIN_VERSION` / `APP_MIN_BUILD` / `APP_FORCE_UPDATE=1` | Wajib update (popup tidak bisa ditutup). |
+| `APP_RELEASE_NOTES` | Catatan rilis, satu poin per baris (atau `\n`, atau dipisah spasi-pipa-spasi). |
+| `APP_UPDATE_URL` | Halaman update (default `https://easvarafy.learncode.web.id`, harus `https://`). |
+| `APP_RELEASE_REPO` / `APP_RELEASE_SOURCE=off` / `APP_RELEASE_GITHUB_TOKEN` | Repo sumber rilis (default repo ini), mematikan pengecekan GitHub, dan token opsional untuk rate limit. |
+
+Tabel Supabase untuk fitur ini: `app_devices`, `broadcast_notifications`, `user_notification_reads` (migrasi `supabase/migrations/20261127000000_app_devices_broadcast_notifications.sql`), beserta RPC perangkat (`register_app_device`, `fetch_device_notifications`, `get_notification_inbox`, `mark_notifications_delivered/read`) dan RPC admin (`admin_notification_stats`, `admin_broadcast_push_targets`).
+
+### 4d. Template Email Supabase (Bahasa Indonesia)
+`docs/supabase-email-templates/` berisi 12 template HTML bermerek Easvarafy: 6 email auth (konfirmasi, undangan, magic link/OTP, reauthentication, reset password, ganti email) dan 6 email pemberitahuan keamanan (password diganti, email diganti, metode masuk ditautkan/dilepas, MFA ditambah/dihapus), beserta subjeknya di `templates.json`. Cara memasangnya (GitHub Action **"Apply Supabase email templates"** dengan secret `SUPABASE_ACCESS_TOKEN`, skrip `node scripts/apply-email-templates.mjs`, atau Dashboard) ada di [`docs/supabase-email-templates/README.md`](./docs/supabase-email-templates/README.md).
+
 ### 5. Beranda Editorial, Explore, Dual-Scope Search & Library Analytics
 - **Home (`HomeView`, `HomeEditorialSections`)**: Berbagai variasi layout editorial (kartu unggulan, daftar padat, karusel album, rak bergaya majalah), filter mood (*All*, *Relax*, *Energize*, *Focus*, *Workout*, *Commute*, *Sad*), strip genre, *Quick Picks* (menjaga invarian filter `hideVideoSongs` sebelum slicing), *Keep Listening*, dan *Forgotten Favorites*.
 - **Explore (`ChartsView`)**: Strip ubin interaktif **Moods & Genres**, tombol aksi *Play Chart* & *Shuffle*, kartu **Top 3 Podium** asimetris, daftar peringkat penuh `#4+`, dan karusel **New Releases**.
@@ -204,6 +230,12 @@ CAPACITOR_SERVER_URL=https://<domain-web-kamu>
 AUDIO_SOURCE_URL_TEMPLATE=https://cdn.domain-kamu/audio/{videoId}.mp3
 AUDIO_STORAGE_BUCKET=offline-audio
 AUDIO_STORAGE_DISABLED=0
+# notifikasi push FCM (opsional, tanpa ini tetap jalan lewat poller & realtime):
+FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account","project_id":"easvarafy-music",...}'
+# popup update APK (opsional, lihat bagian 4c):
+APP_LATEST_VERSION=
+APP_MIN_VERSION=
+APP_FORCE_UPDATE=0
 ```
 
 ### Sumber audio untuk download
@@ -426,7 +458,7 @@ npm run clean
 
 Logika inti aplikasi dipisahkan dari komponen UI dan diuji menggunakan test runner bawaan Node (`node:test` + `node:assert/strict`) melalui `tsx`.
 
-Jalankan seluruh rangkaian unit test (40 pengujian):
+Jalankan seluruh rangkaian unit test (60 pengujian):
 
 ```bash
 npx --yes tsx --test \
@@ -434,15 +466,19 @@ npx --yes tsx --test \
   lib/metrolist/lyricsEngine.test.ts \
   lib/metrolist/statsEngine.test.ts \
   lib/liquid-glass/refraction.test.ts \
-  lib/metrolist/offlineQueue.test.ts
+  lib/metrolist/offlineQueue.test.ts \
+  lib/app/version.test.ts \
+  lib/notifications/shared.test.ts \
+  lib/server/fcm.test.ts
 ```
 
-### Cakupan Pengujian (`40/40 Pass`)
+### Cakupan Pengujian (`60/60 Pass`)
 - **`lib/liquid-glass/refraction.test.ts` (5 tes)**: Validasi profil *convex squircle*, profil pembiasan Hukum Snell (`n = 1.0` vs `n = 1.5`), simetri peta perpindahan 2D, peta *specular rim highlight*, serta preset `pill`/`orb`/`droplet`.
 - **`lib/metrolist/logic.test.ts` (9 tes)**: Validasi filter `hideVideoSongs` sebelum slicing *Quick Picks*, deduplikasi `videoId`, *Keep Listening*, *Forgotten Favorites*, *QueueEngine* (*playNext*, *append*, *shuffle pin*, *repeat*, *radio deduplication*), parser LRC, resolver tema AMOLED/Dynamic Color, dan strategi *Background Popup*.
 - **`lib/metrolist/lyricsEngine.test.ts` (5 tes)**: Validasi parsing enhanced word timestamps `<mm:ss.xx>`, global offset, fisika 5 gaya animasi lirik (*Apple*, *Braccato*, *Expressive*, *Simple*, *None*), *progressive blur*, dan generator jalur SVG *Squiggly Seekbar*.
 - **`lib/metrolist/statsEngine.test.ts` (7 tes)**: Validasi filter periode statistik (`7d`, `30d`, `year`, `all`), agregasi menit & porsi artis, pencarian pustaka lokal + tag, pengurutan track, pembangkitan **Auto Top Mixes** (*My Top Mix*, *On Repeat*, *Rediscover*), total durasi, serta helper **Equalizer**.
 - **`lib/metrolist/offlineQueue.test.ts` (14 tes)**: Validasi antrean unduhan (FIFO, dedupe, batas 2 unduhan paralel, retry setelah gagal), progres 0–100%, `formatBytes`, nama file dari MIME, indeks offline (upsert/hapus/serialisasi, data rusak diabaikan), pesan error berbahasa Indonesia, encoding base64 berpotongan, serta resolver sumber audio (`AUDIO_SOURCE_URL_TEMPLATE`, Supabase Storage, deteksi file non-audio).
+- **`lib/app/version.test.ts`**, **`lib/notifications/shared.test.ts`**, **`lib/server/fcm.test.ts` (20 tes)**: Validasi perbandingan versi/build dan keputusan popup update (termasuk wajib update), parser rilis GitHub `v1.1.0-build.57`, validasi payload notifikasi admin (judul/isi/gambar https/target role), resolver deep link tab, merge inbox dan hitung belum dibaca, serta pembentukan pesan FCM v1 (data + gambar + channel) dan parser service account.
 
 ---
 
@@ -516,6 +552,12 @@ Tambahkan **GitHub Secrets**:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon/publishable key |
 | `NEXT_PUBLIC_API_BASE` | domain web Easvarafy (untuk route musik) |
 | `CAPACITOR_SERVER_URL` | opsional; host web yang dimuat APK (default `https://easvarafy-music.vercel.app`) |
+| `SUPABASE_ACCESS_TOKEN` | opsional; personal access token Supabase (`sbp_…`) khusus workflow **Apply Supabase email templates** |
+
+APK juga membawa `native/android/google-services.json` (Firebase, project
+`easvarafy-music`, berisi kunci publik Android) yang disalin oleh
+`npm run android:configure`, beserta layanan native notifikasi
+(`BroadcastNotifier`, `NotificationPollJobService`, `EasvarafyNotifyPlugin`).
 
 ---
 

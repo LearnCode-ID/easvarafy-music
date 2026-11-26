@@ -3,15 +3,17 @@
 import React, { useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, LogOut, Music4, ShieldCheck, Users } from 'lucide-react';
+import { BellRing, LayoutDashboard, LogOut, Music4, ShieldCheck, Users } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { AccountAvatar } from '@/components/auth/AccountMenu';
 import { displayNameOf } from '@/lib/auth/types';
 import { cn } from '@/lib/utils';
 
 const NAV = [
-  { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/users', label: 'Users', icon: Users },
+  { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, adminOnly: false },
+  { href: '/admin/users', label: 'Users', icon: Users, adminOnly: false },
+  // Broadcast notifications: strictly role `admin` (never developer/user).
+  { href: '/admin/notifications', label: 'Notifikasi', icon: BellRing, adminOnly: true },
 ];
 
 /**
@@ -24,6 +26,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter();
   const { ready, isAuthenticated, isAdmin, profile, email, signOut } = useAuth();
   const isLoginRoute = pathname === '/admin/login' || pathname?.startsWith('/admin/login/');
+  const navItems = NAV.filter((item) => !item.adminOnly || profile?.role === 'admin');
 
   useEffect(() => {
     if (!ready || isLoginRoute) return;
@@ -91,7 +94,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </Link>
 
           <nav className="flex flex-col gap-1">
-            {NAV.map((item) => {
+            {navItems.map((item) => {
               const Icon = item.icon;
               const active = pathname === item.href;
               return (
@@ -163,7 +166,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </header>
 
         <nav className="lg:hidden flex gap-1.5 px-4 py-2 overflow-x-auto no-scrollbar border-b border-[var(--m3-border)]">
-          {NAV.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href;
             return (
