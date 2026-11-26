@@ -23,6 +23,7 @@ import {
 } from './LiquidGlassSurface';
 import { useMusic } from './MusicProvider';
 import { MobileAccountButton } from './auth/AccountMenu';
+import { NotificationBell } from './notifications/NotificationBell';
 import type { NavTab } from '@/lib/metrolist/types';
 import { cn } from '@/lib/utils';
 
@@ -55,16 +56,20 @@ export function MobileTopBar() {
 
   return (
     <header className="lg:hidden sticky top-0 z-30 h-[52px] px-3 flex items-center justify-between bg-[var(--m3-bg)]/95 border-b border-[var(--m3-border)]">
-      <button
-        type="button"
-        onClick={() => {
-          setActiveTab('home');
-          openDetail(null);
-        }}
-        className="text-base font-bold tracking-tight text-slate-900 dark:text-white whitespace-nowrap shrink-0"
-      >
-        Easvarafy
-      </button>
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('home');
+            openDetail(null);
+          }}
+          className="text-base font-bold tracking-tight text-slate-900 dark:text-white whitespace-nowrap shrink-0"
+        >
+          Easvarafy
+        </button>
+        {/* Left of the center slot: never covered by the Dynamic Island pill */}
+        <NotificationBell variant="mobile" />
+      </div>
 
       {/* Center slot intentionally stays open for the top-center Dynamic Island */}
 

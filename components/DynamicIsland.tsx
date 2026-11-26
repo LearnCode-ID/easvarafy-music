@@ -18,6 +18,7 @@ import { ArtworkImage } from './ArtworkImage';
 import { useMusic } from './MusicProvider';
 import { findActiveLyricIndex, formatDuration } from '@/lib/metrolist/lyrics';
 import { cn } from '@/lib/utils';
+import { useNativeIslandStatus } from '@/lib/native/mediaControls';
 
 export function DynamicIsland() {
   const {
@@ -41,6 +42,9 @@ export function DynamicIsland() {
   } = useMusic();
 
   const [expanded, setExpanded] = useState(false);
+  // Android APK: the island is drawn by the system around the front camera,
+  // on top of every app, so the in-app copy steps aside.
+  const nativeIsland = useNativeIslandStatus();
 
   const activeLyric = useMemo(() => {
     if (!lyrics?.synced || lyrics.lines.length === 0) return null;
@@ -59,7 +63,7 @@ export function DynamicIsland() {
   }, [expanded]);
 
   // Hide static top island while full-screen sheet or draggable floating Pro overlay is open
-  if (isNowPlayingOpen || popupMode === 'floating-overlay') return null;
+  if (isNowPlayingOpen || popupMode === 'floating-overlay' || nativeIsland?.active) return null;
 
   const liked = currentTrack ? isLiked(currentTrack.videoId) : false;
   const progress =

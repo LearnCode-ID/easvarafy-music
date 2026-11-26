@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="easvarafy_island_accessibility_label">Easvarafy Dynamic Island</string>
+    <string name="easvarafy_island_accessibility_summary">Tampilkan Dynamic Island di sekitar kamera depan</string>
+    <string name="easvarafy_island_accessibility_description">Menampilkan Dynamic Island Easvarafy (seperti iPhone) di sekitar kamera depan, di atas semua aplikasi, untuk mengontrol musik yang sedang diputar. Layanan ini tidak membaca atau menyimpan isi layar Anda.</string>
+</resources>

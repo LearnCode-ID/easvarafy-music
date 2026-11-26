@@ -99,6 +99,40 @@ Secara fungsional, Easvarafy memadukan mesin rekomendasi, antrean, dan animasi l
 - **Cascading Background Popup Strategy**: Otomatis memilih mode terbaik yang didukung browser: `Document Picture-in-Picture` → `Canvas Video PiP` → `Floating Overlay`.
 - **Integrasi Media Session API**: Menampilkan metadata lagu, sampul album, posisi putar, serta tombol Play/Pause/Prev/Next pada kontrol media sistem operasi dan layar kunci, dilengkapi *visibility recovery* & koreksi drift.
 
+### 4b. Download Lagu & Mode Offline (`lib/metrolist/offlineAudio.ts`, `DownloadButton`, `OfflineDownloadsSection`)
+- **Tombol Download** di `NowPlayingSheet`, menu titik tiga (`TrackContextMenu`), hasil `SearchView`, `DetailView`, dan Liked Songs: ikon unduh → cincin progres **0–100%** (ketuk untuk batal) → centang **"Tersimpan Offline"** (ketuk untuk hapus). Maksimal 2 unduhan berjalan bersamaan, sisanya antre.
+- **Penyimpanan**: APK memakai `@capacitor/filesystem` `Directory.Data` (`offline/audio/<videoId>.<ext>`, `offline/art/`, indeks `offline/index.json`) dan memutar via `convertFileSrc`; versi web memakai **IndexedDB** (`easvarafy-offline`) + Object URL. Metadata: `videoId`, `title`, `artist`, `duration`, `localUri`, `fileSizeBytes`, `downloadedAt`, `lyrics` (lirik ikut disimpan agar tampil offline).
+- **Pemutar ganda tanpa tabrakan**: `MusicProvider` memakai elemen `<audio>` untuk lagu yang sudah diunduh (play/pause, seek, kecepatan, **Equalizer & Bass Boost via Web Audio**, Media Session/layar kunci, auto-next) dan YouTube IFrame untuk sisanya — tidak pernah berbunyi bersamaan. Saat offline, lagu yang belum diunduh dilewati otomatis.
+- **Library → tab "Offline"**: daftar *Lagu Tersimpan Offline* dengan badge ukuran file, total penyimpanan, Putar Offline / Acak, serta status unduhan yang gagal (coba lagi / tutup). **Settings → Storage & Backup**: total pemakaian + **Hapus Semua Unduhan** (konfirmasi dua kali ketuk).
+- **Service Worker** (`public/sw.js`, hanya build web produksi): *app shell* + aset `/_next/static` di-cache sehingga Library dan lagu yang diunduh tetap bisa dibuka dalam mode pesawat; halaman cadangan `public/offline.html`.
+- **Sumber audio** wajib dikonfigurasi di server (lihat [Sumber audio untuk download](#sumber-audio-untuk-download)). Jika audio sebuah lagu belum tersedia, UI menampilkan *"Audio lagu ini belum tersedia untuk diunduh. Lagu tetap bisa diputar online."* tanpa mengganggu pemutar.
+
+### 4c. Notifikasi Broadcast, Popup Update & "Easvarafy has been updated"
+- **Lonceng notifikasi** (`components/notifications/NotificationBell`) di top bar mobile (di kiri slot Dynamic Island, jadi tidak tertutup) dan di sidebar desktop. Ada badge belum dibaca, inbox riwayat (judul, isi, gambar, kategori, waktu relatif), **Tandai dibaca**, dan banner masuk di dalam aplikasi. Mengetuk notifikasi membuka tujuannya: `/`, `/explore`, `/search`, `/?tab=charts|library|settings` berpindah tab; `https://…` dibuka di *in-app browser*.
+- **Admin → Notifikasi** (`/admin/notifications`, **khusus admin**; developer/user ditolak di UI, route API, dan RLS) berisi editor dengan kategori (Pengumuman/Story/Rilis Baru/Promo/Update), gambar `https://` opsional, tujuan saat diketuk, target (Semua / Login saja / Role), **pratinjau Android langsung**, statistik perangkat, serta riwayat dengan jumlah target/diterima/dibaca dan status push.
+- **Jalur pengiriman**, dari yang paling cepat:
+  1. **Push FCM**, bila `FIREBASE_SERVICE_ACCOUNT_JSON` diset dan perangkat sudah punya token.
+  2. **Poller Android native** (`NotificationPollJobService`, ±15 menit lewat JobScheduler), yang tetap jalan saat aplikasi ditutup, **tanpa FCM**. Notifikasi gambar memakai BigPicture di channel `easvarafy_broadcast_channel`.
+  3. **Supabase Realtime + polling** saat aplikasi terbuka atau sedang memutar musik di latar belakang.
+  4. **Inbox lonceng** sebagai riwayat.
+- **Popup "Easvarafy versi baru tersedia"** (`components/AppUpdateModal.tsx`, khusus APK): mengecek `GET /api/app/version` saat aplikasi dibuka dan saat kembali ke foreground (maksimal tiap 6 jam). Tombol **Update Sekarang** membuka `https://easvarafy.learncode.web.id` di dalam aplikasi; **Nanti** menunda popup 24 jam untuk versi itu, dan `forceUpdate`/`minVersion` membuat popup tidak bisa ditutup. **Settings → Tentang → Cek Pembaruan** memeriksa secara manual (di web selalu "otomatis terbaru").
+- **Notifikasi "Easvarafy has been updated"** (native, channel `easvarafy_updates_channel`): muncul sekali setelah APK baru dipasang (versionCode berubah).
+- **Versi APK**: CI mengisi `versionCode = github.run_number` dan `versionName = package.json version` (sekarang **1.1.0**). Rilis GitHub bertag `v<version>-build.<run>`, yang otomatis dibaca oleh `/api/app/version`.
+
+| Variabel (server/Vercel) | Fungsi |
+| --- | --- |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | JSON service account Firebase (project `easvarafy-music`) untuk push FCM. Tanpa ini status push `skipped` dan perangkat tetap menerima lewat poller dan realtime. |
+| `APP_LATEST_VERSION` / `APP_LATEST_BUILD` | Paksa versi terbaru. Bila kosong, diambil dari GitHub Release terbaru, lalu `package.json`. |
+| `APP_MIN_VERSION` / `APP_MIN_BUILD` / `APP_FORCE_UPDATE=1` | Wajib update (popup tidak bisa ditutup). |
+| `APP_RELEASE_NOTES` | Catatan rilis, satu poin per baris (atau `\n`, atau dipisah spasi-pipa-spasi). |
+| `APP_UPDATE_URL` | Halaman update (default `https://easvarafy.learncode.web.id`, harus `https://`). |
+| `APP_RELEASE_REPO` / `APP_RELEASE_SOURCE=off` / `APP_RELEASE_GITHUB_TOKEN` | Repo sumber rilis (default repo ini), mematikan pengecekan GitHub, dan token opsional untuk rate limit. |
+
+Tabel Supabase untuk fitur ini: `app_devices`, `broadcast_notifications`, `user_notification_reads` (migrasi `supabase/migrations/20261127000000_app_devices_broadcast_notifications.sql`), beserta RPC perangkat (`register_app_device`, `fetch_device_notifications`, `get_notification_inbox`, `mark_notifications_delivered/read`) dan RPC admin (`admin_notification_stats`, `admin_broadcast_push_targets`).
+
+### 4d. Template Email Supabase (Bahasa Indonesia)
+`docs/supabase-email-templates/` berisi 12 template HTML bermerek Easvarafy: 6 email auth (konfirmasi, undangan, magic link/OTP, reauthentication, reset password, ganti email) dan 6 email pemberitahuan keamanan (password diganti, email diganti, metode masuk ditautkan/dilepas, MFA ditambah/dihapus), beserta subjeknya di `templates.json`. Cara memasangnya (GitHub Action **"Apply Supabase email templates"** dengan secret `SUPABASE_ACCESS_TOKEN`, skrip `node scripts/apply-email-templates.mjs`, atau Dashboard) ada di [`docs/supabase-email-templates/README.md`](./docs/supabase-email-templates/README.md).
+
 ### 5. Beranda Editorial, Explore, Dual-Scope Search & Library Analytics
 - **Home (`HomeView`, `HomeEditorialSections`)**: Berbagai variasi layout editorial (kartu unggulan, daftar padat, karusel album, rak bergaya majalah), filter mood (*All*, *Relax*, *Energize*, *Focus*, *Workout*, *Commute*, *Sad*), strip genre, *Quick Picks* (menjaga invarian filter `hideVideoSongs` sebelum slicing), *Keep Listening*, dan *Forgotten Favorites*.
 - **Explore (`ChartsView`)**: Strip ubin interaktif **Moods & Genres**, tombol aksi *Play Chart* & *Shuffle*, kartu **Top 3 Podium** asimetris, daftar peringkat penuh `#4+`, dan karusel **New Releases**.
@@ -139,7 +173,18 @@ Easvarafy memakai **Supabase Auth** hanya untuk identitas pengguna. Katalog musi
 semua; membuat playlist, like lagu, atau menyimpan koleksi akan memunculkan popup
 **"Login dulu yuk"**.
 
-**Proteksi role:** membuka `/admin/*` tanpa role admin akan diarahkan ke `/login`.
+**Proteksi role:** `/admin/*` **hanya untuk role `admin`**. Guest diarahkan ke `/login`;
+akun `user` maupun `developer` yang sudah login melihat "Akses ditolak" lalu dikembalikan
+ke beranda. Fungsi database `is_admin()` (dipakai RLS & `admin_user_stats()`) juga hanya
+menerima `admin` — lihat `supabase/migrations/20261126000000_admin_panel_admin_only.sql`.
+
+**Badge centang:**
+
+| Role | Badge | Keterangan publik | Akses admin |
+| --- | --- | --- | --- |
+| `admin` | Centang biru | **Akun Terverifikasi** / "Terverifikasi" (tidak menyebut admin) | ✅ |
+| `developer` | Centang kuning | Developer Terverifikasi | ❌ |
+| `user` | — | Member | ❌ |
 
 **Membuat admin pertama:** buka `/admin/register` sekali (atau daftar lewat `/register`
 lalu jalankan SQL di bawah), setelah itu semua pengaturan role dilakukan dari
@@ -161,7 +206,7 @@ profiles (
   email text,
   name text,
   avatar_url text,
-  role text not null default 'user' check (role in ('user','admin')),
+  role text not null default 'user' check (role in ('user','admin','developer')),
   is_banned boolean not null default false,
   created_at timestamptz not null default now()
 )
@@ -179,7 +224,38 @@ NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 # opsional, hanya untuk build APK (static export):
 NEXT_PUBLIC_API_BASE=https://<domain-web-kamu>
+# opsional, host yang dimuat APK (default https://easvarafy-music.vercel.app):
+CAPACITOR_SERVER_URL=https://<domain-web-kamu>
+# sumber audio untuk fitur download (lihat bagian di bawah):
+AUDIO_SOURCE_URL_TEMPLATE=https://cdn.domain-kamu/audio/{videoId}.mp3
+AUDIO_STORAGE_BUCKET=offline-audio
+AUDIO_STORAGE_DISABLED=0
+# notifikasi push FCM (opsional, tanpa ini tetap jalan lewat poller & realtime):
+FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account","project_id":"easvarafy-music",...}'
+# popup update APK (opsional, lihat bagian 4c):
+APP_LATEST_VERSION=
+APP_MIN_VERSION=
+APP_FORCE_UPDATE=0
 ```
+
+### Sumber audio untuk download
+
+Endpoint `/api/music/audio` **tidak** mengekstrak audio dari YouTube (melanggar
+ToS YouTube). Ia meneruskan (*proxy*, dengan CORS + HTTP Range) file audio dari
+sumber yang kamu miliki/berlisensi, dicoba berurutan:
+
+1. **`AUDIO_SOURCE_URL_TEMPLATE`**: satu atau beberapa URL (pisahkan koma) dengan
+   placeholder `{videoId}`, `{title}`, `{artist}`. Contoh:
+   `https://cdn.domain-kamu/audio/{videoId}.mp3,https://cadangan.domain-kamu/{videoId}.m4a`.
+2. **Supabase Storage**: bucket publik `AUDIO_STORAGE_BUCKET` (default
+   `offline-audio`) berisi `<videoId>.mp3` / `.m4a` / `.opus` / `.webm`. Matikan
+   dengan `AUDIO_STORAGE_DISABLED=1`.
+
+| Permintaan | Hasil |
+| --- | --- |
+| `GET /api/music/audio?videoId=…&title=…&artist=…` | stream audio (`206` jika Range), header `X-Audio-Source`, `X-Audio-Length` |
+| `GET …&resolve=1` | JSON `{ ok, url, contentType, contentLength, source }` |
+| gagal | JSON `{ ok:false, error, message }`: `invalid_video_id` (400), `audio_source_not_configured` / `audio_unavailable` (404), `audio_upstream_failed` (502) |
 
 Di dashboard Supabase → Authentication → URL Configuration, tambahkan
 `https://<domain>/auth/callback`, `https://<domain>/reset-password`, dan
@@ -282,7 +358,11 @@ Supabase → khusus APK): **[`docs/AUTH_SETUP.md`](./docs/AUTH_SETUP.md)**.
 │   │   ├── theme.ts                 # Resolver tema Dark/Light/AMOLED & ekstraksi Dynamic Color
 │   │   ├── logic.test.ts            # Unit test rekomendasi, antrean, tema, & background popup
 │   │   ├── lyricsEngine.test.ts     # Unit test parser enhanced word timing & 5 gaya animasi lirik
-│   │   └── statsEngine.test.ts      # Unit test statistik, Auto Top Mixes, pencarian lokal, & EQ
+│   │   ├── statsEngine.test.ts      # Unit test statistik, Auto Top Mixes, pencarian lokal, & EQ
+│   │   ├── offlineQueue.ts          # Logika murni antrean unduhan, indeks offline, progres, & pesan error
+│   │   ├── offlineAudio.ts          # Penyimpanan lagu offline (Filesystem Directory.Data / IndexedDB)
+│   │   ├── useOfflineLibrary.ts     # Hook React status unduhan & koneksi online/offline
+│   │   └── offlineQueue.test.ts     # Unit test antrean unduhan, indeks offline, & sumber audio
 │   ├── liquid-glass/
 │   │   ├── refraction.ts            # Matematika Hukum Snell, convex squircle, displacement & specular map
 │   │   └── refraction.test.ts       # Unit test fisika refraksi & pembangkitan peta SVG
@@ -320,6 +400,7 @@ Seluruh pemanggilan ke `ytmusic-api` dan `LRCLIB` dijalankan pada **Next.js API 
 | `/api/music/detail` | `GET` | `kind` (`album`\|`playlist`\|`artist`), `id`, `gl` | Memuat daftar lagu lengkap dan metadata untuk Album, Playlist YouTube Music, atau halaman Artis (top songs, albums, singles, featured playlists). |
 | `/api/music/up-next` | `GET` | `videoId`, `gl` | Mengambil daftar lagu lanjutan (*Up Next / Auto Radio*) berdasarkan `videoId` aktif. |
 | `/api/music/lyrics` | `GET` | `videoId`, `title`, `artist`, `duration` | Resolusi lirik berjenjang: YouTube Music Timed Lyrics → LRCLIB Synced/Plain Lyrics → YouTube Music Plain Lyrics. |
+| `/api/music/audio` | `GET`/`HEAD`/`OPTIONS` | `videoId`, `title`, `artist`, `resolve=1`, Header `Range` | Proxy file audio untuk fitur download dari sumber yang dikonfigurasi (lihat [Sumber audio untuk download](#sumber-audio-untuk-download)). |
 
 ---
 
@@ -377,27 +458,57 @@ npm run clean
 
 Logika inti aplikasi dipisahkan dari komponen UI dan diuji menggunakan test runner bawaan Node (`node:test` + `node:assert/strict`) melalui `tsx`.
 
-Jalankan seluruh rangkaian unit test (26 pengujian):
+Jalankan seluruh rangkaian unit test (60 pengujian):
 
 ```bash
 npx --yes tsx --test \
   lib/metrolist/logic.test.ts \
   lib/metrolist/lyricsEngine.test.ts \
   lib/metrolist/statsEngine.test.ts \
-  lib/liquid-glass/refraction.test.ts
+  lib/liquid-glass/refraction.test.ts \
+  lib/metrolist/offlineQueue.test.ts \
+  lib/app/version.test.ts \
+  lib/notifications/shared.test.ts \
+  lib/server/fcm.test.ts
 ```
 
-### Cakupan Pengujian (`26/26 Pass`)
+### Cakupan Pengujian (`60/60 Pass`)
 - **`lib/liquid-glass/refraction.test.ts` (5 tes)**: Validasi profil *convex squircle*, profil pembiasan Hukum Snell (`n = 1.0` vs `n = 1.5`), simetri peta perpindahan 2D, peta *specular rim highlight*, serta preset `pill`/`orb`/`droplet`.
 - **`lib/metrolist/logic.test.ts` (9 tes)**: Validasi filter `hideVideoSongs` sebelum slicing *Quick Picks*, deduplikasi `videoId`, *Keep Listening*, *Forgotten Favorites*, *QueueEngine* (*playNext*, *append*, *shuffle pin*, *repeat*, *radio deduplication*), parser LRC, resolver tema AMOLED/Dynamic Color, dan strategi *Background Popup*.
 - **`lib/metrolist/lyricsEngine.test.ts` (5 tes)**: Validasi parsing enhanced word timestamps `<mm:ss.xx>`, global offset, fisika 5 gaya animasi lirik (*Apple*, *Braccato*, *Expressive*, *Simple*, *None*), *progressive blur*, dan generator jalur SVG *Squiggly Seekbar*.
 - **`lib/metrolist/statsEngine.test.ts` (7 tes)**: Validasi filter periode statistik (`7d`, `30d`, `year`, `all`), agregasi menit & porsi artis, pencarian pustaka lokal + tag, pengurutan track, pembangkitan **Auto Top Mixes** (*My Top Mix*, *On Repeat*, *Rediscover*), total durasi, serta helper **Equalizer**.
+- **`lib/metrolist/offlineQueue.test.ts` (14 tes)**: Validasi antrean unduhan (FIFO, dedupe, batas 2 unduhan paralel, retry setelah gagal), progres 0–100%, `formatBytes`, nama file dari MIME, indeks offline (upsert/hapus/serialisasi, data rusak diabaikan), pesan error berbahasa Indonesia, encoding base64 berpotongan, serta resolver sumber audio (`AUDIO_SOURCE_URL_TEMPLATE`, Supabase Storage, deteksi file non-audio).
+- **`lib/app/version.test.ts`**, **`lib/notifications/shared.test.ts`**, **`lib/server/fcm.test.ts` (20 tes)**: Validasi perbandingan versi/build dan keputusan popup update (termasuk wajib update), parser rilis GitHub `v1.1.0-build.57`, validasi payload notifikasi admin (judul/isi/gambar https/target role), resolver deep link tab, merge inbox dan hitung belum dibaca, serta pembentukan pesan FCM v1 (data + gambar + channel) dan parser service account.
 
 ---
 
 ## Build APK Android (Capacitor)
 
-Aplikasi Android dibangun dari **static export** Next.js lalu dibungkus Capacitor.
+**APK = web live + jaring pengaman offline.** `capacitor.config.ts` memakai
+`server.url = process.env.CAPACITOR_SERVER_URL || 'https://easvarafy-music.vercel.app'`
+(`cleartext: false`), jadi APK selalu memuat versi web terbaru: setiap deploy web
+(merge ke `main` → Vercel) langsung muncul di aplikasi **tanpa install ulang APK**.
+Ganti ke domain sendiri cukup dengan secret/env `CAPACITOR_SERVER_URL`
+(harus `https://`; nilai `bundled` membuat APK lokal penuh seperti dulu).
+
+Static export (`out/`) tetap dibundel ke dalam APK sebagai cadangan offline:
+
+- **Tanpa internet saat membuka app** → `OfflineWebViewClient` (native) menyajikan
+  salinan web dari dalam APK pada origin yang sama, sehingga Library dan lagu yang
+  sudah diunduh tetap bisa diputar dalam mode pesawat.
+- **Belum ada lagu diunduh / server tidak terjangkau** → layar native
+  *"Tidak ada koneksi internet"* dengan tombol **Coba Lagi** dan **Buka Mode
+  Offline** (bukan halaman `net::ERR_INTERNET_DISCONNECTED`). Saat koneksi kembali,
+  aplikasi memuat ulang otomatis.
+- File lagu yang diunduh disajikan dengan dukungan **HTTP Range** agar seek lancar.
+- Splash GIF native, ikon dari `favicon.ico`, notifikasi media/layar kunci
+  (`MediaPlaybackService` + `BackgroundWebView`), Dynamic Island, dan deep link
+  OAuth `com.easvarafy.app://auth/callback` tetap berjalan.
+
+> Karena APK memuat web produksi, fitur baru di APK baru terlihat setelah
+> perubahan di-merge ke `main` dan ter-deploy di Vercel.
+
+Langkah build manual:
 
 ```bash
 # 1. build static ke ./out  (route server dipindah sementara, selalu dipulihkan)
@@ -413,7 +524,7 @@ cd android && ./gradlew assembleDebug
 ```
 
 Konfigurasi: `capacitor.config.ts` (`appId: com.easvarafy.app`, `webDir: out`,
-`androidScheme: https`).
+`server.url` dari `CAPACITOR_SERVER_URL`, `androidScheme: https`).
 
 **Login Google di APK.** `signInWithOAuth` dibuka lewat `@capacitor/browser`;
 Supabase lalu redirect ke deep link `com.easvarafy.app://auth/callback` yang
@@ -440,6 +551,13 @@ Tambahkan **GitHub Secrets**:
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://<project-ref>.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon/publishable key |
 | `NEXT_PUBLIC_API_BASE` | domain web Easvarafy (untuk route musik) |
+| `CAPACITOR_SERVER_URL` | opsional; host web yang dimuat APK (default `https://easvarafy-music.vercel.app`) |
+| `SUPABASE_ACCESS_TOKEN` | opsional; personal access token Supabase (`sbp_…`) khusus workflow **Apply Supabase email templates** |
+
+APK juga membawa `native/android/google-services.json` (Firebase, project
+`easvarafy-music`, berisi kunci publik Android) yang disalin oleh
+`npm run android:configure`, beserta layanan native notifikasi
+(`BroadcastNotifier`, `NotificationPollJobService`, `EasvarafyNotifyPlugin`).
 
 ---
 

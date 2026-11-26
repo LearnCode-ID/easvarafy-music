@@ -19,6 +19,10 @@ function resolveApiBase(): string {
     const isNative = Boolean(cap?.isNativePlatform?.());
     const isCapacitorLocalhost =
       window.location.hostname === 'localhost' && window.location.port === '';
+    // APK loading the live site (capacitor server.url): the API is same-origin.
+    if (isNative && !isCapacitorLocalhost && window.location.protocol === 'https:') {
+      return '';
+    }
     if (isNative || isCapacitorLocalhost) {
       return DEFAULT_NATIVE_API_BASE;
     }

@@ -33,7 +33,9 @@ function LoginForm() {
   // Already signed in? Go straight to the right landing page.
   useEffect(() => {
     if (!ready || !isAuthenticated) return;
-    router.replace(redirectTo || (isAdmin ? '/admin/dashboard' : '/'));
+    // Non-admins (incl. developers) must never be sent into /admin.
+    const safeRedirect = redirectTo && (isAdmin || !redirectTo.startsWith('/admin')) ? redirectTo : null;
+    router.replace(safeRedirect || (isAdmin ? '/admin/dashboard' : '/'));
   }, [ready, isAuthenticated, isAdmin, redirectTo, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -54,7 +56,10 @@ function LoginForm() {
       setFormError(result.error);
       return;
     }
-    router.replace(redirectTo || result.destination || '/');
+    // result.destination is '/admin/dashboard' only for role admin.
+    const isAdminLanding = result.destination === '/admin/dashboard';
+    const allowRedirect = redirectTo && (isAdminLanding || !redirectTo.startsWith('/admin'));
+    router.replace((allowRedirect ? redirectTo : null) || result.destination || '/');
   };
 
   const handleGoogle = async () => {

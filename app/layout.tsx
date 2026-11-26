@@ -1,6 +1,9 @@
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans, DM_Sans, JetBrains_Mono } from 'next/font/google';
 import { AuthProvider } from '@/components/auth/AuthProvider';
+import { ServiceWorkerRegistrar } from '@/components/ServiceWorkerRegistrar';
+import { AppUpdateModal } from '@/components/AppUpdateModal';
+import { NotificationBootstrap } from '@/components/notifications/NotificationBootstrap';
 import './globals.css';
 
 const plusJakarta = Plus_Jakarta_Sans({
@@ -65,7 +68,12 @@ export default function RootLayout({
         className="min-h-screen bg-[var(--m3-bg)] text-[#1A1C20] dark:text-[#E6E8EE] selection:bg-[var(--m3-primary-soft)] selection:text-[var(--m3-primary)] transition-colors duration-200"
         suppressHydrationWarning
       >
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          {children}
+          <NotificationBootstrap />
+          <AppUpdateModal />
+        </AuthProvider>
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );

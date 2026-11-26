@@ -1,8 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Music2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  findDownloadedByArtwork,
+  resolveOfflineArtworkUrl,
+} from '@/lib/metrolist/offlineAudio';
 
 interface ArtworkImageProps {
   src?: string | null;
@@ -28,7 +32,7 @@ function hashString(input: string): number {
 }
 
 export function ArtworkImage({
-  src,
+  src: rawSrc,
   alt,
   className,
   rounded = 'rounded-xl',
@@ -39,6 +43,27 @@ export function ArtworkImage({
 
   const gradientClass =
     GRADIENT_FALLBACKS[hashString(alt || 'sonora') % GRADIENT_FALLBACKS.length];
+
+  // Offline fallback: when the network artwork fails and the song was
+  // downloaded, show the artwork saved with the download instead.
+  const [offlineArt, setOfflineArt] = useState<{ for: string; url: string } | null>(null);
+  const remoteFailed = !!rawSrc && failedSrc === rawSrc;
+  useEffect(() => {
+    if (!remoteFailed || !rawSrc) return;
+    const record = findDownloadedByArtwork(rawSrc);
+    if (!record?.localThumbUri) return;
+    let cancelled = false;
+    resolveOfflineArtworkUrl(record)
+      .then((url) => {
+        if (!cancelled && url && url !== rawSrc) setOfflineArt({ for: rawSrc, url });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [remoteFailed, rawSrc]);
+  const src: string | null | undefined =
+    remoteFailed && offlineArt && offlineArt.for === rawSrc ? offlineArt.url : rawSrc;
 
   const isFailed = !src || failedSrc === src;
   const isLoaded = !!src && loadedSrc === src;
@@ -76,7 +101,15 @@ export function ArtworkImage({
           referrerPolicy="no-referrer"
           decoding="async"
           onLoad={() => setLoadedSrc(src)}
-          onError={() => setFailedSrc(src)}
+          onError={() => {
+            if (offlineArt && src === offlineArt.url) {
+              // Local copy is broken too: stay on the placeholder.
+              setOfflineArt(null);
+              setFailedSrc(rawSrc ?? null);
+              return;
+            }
+            setFailedSrc(src);
+          }}
           className={cn(
             'relative z-10 w-full h-full object-cover transition-opacity duration-200',
             isLoaded ? 'opacity-100' : 'opacity-0',

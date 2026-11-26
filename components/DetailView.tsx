@@ -18,6 +18,7 @@ import { ArtworkImage } from './ArtworkImage';
 import { useMusic } from './MusicProvider';
 import { DetailViewSkeleton } from './Skeletons';
 import { TrackContextMenu } from './TrackContextMenu';
+import { DownloadButton } from './DownloadButton';
 import { UserProfileDetail } from './UserProfileDetail';
 import { formatDuration } from '@/lib/metrolist/lyrics';
 import {
@@ -443,6 +444,7 @@ export function DetailView() {
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
+                  <DownloadButton track={track} />
                   <TrackContextMenu track={track} />
                 </div>
               );
@@ -680,6 +682,7 @@ export function DetailView() {
                         </p>
                       </div>
                     </button>
+                    <DownloadButton track={track} />
                     <TrackContextMenu track={track} />
                   </div>
                 );

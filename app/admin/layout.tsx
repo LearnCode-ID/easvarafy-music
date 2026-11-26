@@ -3,31 +3,41 @@
 import React, { useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, LogOut, Music4, ShieldCheck, Users } from 'lucide-react';
+import { BellRing, LayoutDashboard, LogOut, Music4, ShieldCheck, Users } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { AccountAvatar } from '@/components/auth/AccountMenu';
 import { displayNameOf } from '@/lib/auth/types';
 import { cn } from '@/lib/utils';
 
 const NAV = [
-  { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/users', label: 'Users', icon: Users },
+  { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, adminOnly: false },
+  { href: '/admin/users', label: 'Users', icon: Users, adminOnly: false },
+  // Broadcast notifications: strictly role `admin` (never developer/user).
+  { href: '/admin/notifications', label: 'Notifikasi', icon: BellRing, adminOnly: true },
 ];
 
 /**
- * Admin shell + guard.
- * Any non-admin (guest or plain user) is redirected to /login — the only admin
- * entry point is /admin/login.
+ * Admin shell + guard. Only role `admin` may enter (developers cannot).
+ * - Guest -> /login?redirectTo=/admin/dashboard
+ * - Signed in but not admin (user / developer) -> back to the app home.
  */
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { ready, isAuthenticated, isAdmin, profile, email, signOut } = useAuth();
   const isLoginRoute = pathname === '/admin/login' || pathname?.startsWith('/admin/login/');
+  const navItems = NAV.filter((item) => !item.adminOnly || profile?.role === 'admin');
 
   useEffect(() => {
     if (!ready || isLoginRoute) return;
-    if (!isAuthenticated || !isAdmin) router.replace('/login?redirectTo=/admin/dashboard');
+    if (!isAuthenticated) {
+      router.replace('/login?redirectTo=/admin/dashboard');
+    } else if (!isAdmin) {
+      // Signed-in user/developer: no admin access. Sending them to /login would
+      // bounce straight back here, so return them to the app instead.
+      const t = setTimeout(() => router.replace('/'), 1800);
+      return () => clearTimeout(t);
+    }
   }, [ready, isAuthenticated, isAdmin, isLoginRoute, router]);
 
   if (isLoginRoute) return <>{children}</>;
@@ -44,18 +54,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   if (!isAuthenticated || !isAdmin) {
+    const signedIn = isAuthenticated;
     return (
       <div className="min-h-screen bg-[var(--m3-bg)] flex flex-col items-center justify-center gap-3 px-6 text-center">
         <ShieldCheck className="w-8 h-8 text-[var(--m3-primary)]" />
-        <p className="text-sm font-semibold">Halaman ini khusus admin</p>
-        <p className="text-[12.5px] text-slate-500 dark:text-slate-400">
-          Kamu akan diarahkan ke halaman login…
+        <p className="text-sm font-semibold">
+          {signedIn ? 'Akses ditolak' : 'Halaman ini khusus admin'}
+        </p>
+        <p className="text-[12.5px] text-slate-500 dark:text-slate-400 max-w-xs">
+          {signedIn
+            ? 'Halaman ini hanya untuk admin. Akun kamu tidak punya akses ke panel admin. Mengalihkan ke beranda…'
+            : 'Kamu akan diarahkan ke halaman login…'}
         </p>
         <Link
-          href="/login"
+          href={signedIn ? '/' : '/login'}
           className="mt-2 min-h-[44px] px-5 rounded-full bg-[var(--m3-primary)] text-[var(--m3-on-primary)] text-[13px] font-semibold inline-flex items-center"
         >
-          Ke halaman login
+          {signedIn ? 'Ke beranda' : 'Ke halaman login'}
         </Link>
       </div>
     );
@@ -79,7 +94,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </Link>
 
           <nav className="flex flex-col gap-1">
-            {NAV.map((item) => {
+            {navItems.map((item) => {
               const Icon = item.icon;
               const active = pathname === item.href;
               return (
@@ -151,7 +166,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </header>
 
         <nav className="lg:hidden flex gap-1.5 px-4 py-2 overflow-x-auto no-scrollbar border-b border-[var(--m3-border)]">
-          {NAV.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href;
             return (

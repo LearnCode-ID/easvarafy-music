@@ -29,6 +29,10 @@ jobs:
       # (/api/music/*) are reached on the deployed web build. Same endpoints,
       # same data source as the web app.
       NEXT_PUBLIC_API_BASE: ${{ secrets.NEXT_PUBLIC_API_BASE || 'https://easvarafy-music.vercel.app' }}
+      # The APK loads the live web app from this host (capacitor.config.ts
+      # server.url), so web deploys update the app without a new APK. The
+      # static export above is still bundled as the offline fallback.
+      CAPACITOR_SERVER_URL: ${{ secrets.CAPACITOR_SERVER_URL || 'https://easvarafy-music.vercel.app' }}
 
     steps:
       - name: Checkout
@@ -43,6 +47,19 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Type check & unit tests
+        run: |
+          npx tsc --noEmit -p .
+          npx --yes tsx --test \
+            lib/metrolist/logic.test.ts \
+            lib/metrolist/lyricsEngine.test.ts \
+            lib/metrolist/statsEngine.test.ts \
+            lib/liquid-glass/refraction.test.ts \
+            lib/metrolist/offlineQueue.test.ts \
+            lib/app/version.test.ts \
+            lib/notifications/shared.test.ts \
+            lib/server/fcm.test.ts
+
       - name: Build web (static export)
         run: npm run build:static
 
@@ -55,12 +72,20 @@ jobs:
           ls -la out | head -20
 
       - name: Sync Capacitor (Android)
+        env:
+          # Android versionCode = workflow run number (matches the release tag
+          # v<version>-build.<run_number> read by /api/app/version);
+          # versionName = package.json "version".
+          APP_VERSION_CODE: ${{ github.run_number }}
         run: |
+          export APP_VERSION_NAME="$(node -p "require('./package.json').version")"
+          echo "Android versionName ${APP_VERSION_NAME}, versionCode ${APP_VERSION_CODE}"
           if [ ! -d android ]; then
             npx cap add android
           fi
           npx cap sync android
           node scripts/configure-android.mjs
+          grep -nE 'versionCode|versionName' android/app/build.gradle
           node scripts/generate-android-icons.mjs
           npx @capacitor/assets generate --android --iconBackgroundColor '#000000' --splashBackgroundColor '#000000' --splashBackgroundColorDark '#000000'
 

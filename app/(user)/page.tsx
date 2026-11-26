@@ -13,6 +13,8 @@ import { MiniPlayer } from '@/components/MiniPlayer';
 import { MobileBottomTabs, MobileTopBar } from '@/components/MobileNav';
 import { MusicProvider, useMusic } from '@/components/MusicProvider';
 import { NowPlayingSheet } from '@/components/NowPlayingSheet';
+import { NotificationTabRouter } from '@/components/notifications/NotificationTabRouter';
+import { OfflineStatusBanner } from '@/components/OfflineStatusBanner';
 import { PlaylistPickerModal } from '@/components/PlaylistPickerModal';
 import { SearchView } from '@/components/SearchView';
 import { SettingsView } from '@/components/SettingsView';
@@ -47,10 +49,12 @@ function EasvarafyShell() {
       {/* iPhone 17 / 18 Dynamic Island & Background Popup Engine */}
       <DynamicIsland />
       <DynamicIslandPopup />
+      <NotificationTabRouter />
 
       <Sidebar />
 
       <div className="flex-1 min-w-0 flex flex-col">
+        <OfflineStatusBanner />
         <MobileTopBar />
 
         <main

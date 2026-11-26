@@ -21,7 +21,7 @@ import { useMusic } from './MusicProvider';
 import { TrackContextMenu } from './TrackContextMenu';
 import { useAuth } from './auth/AuthProvider';
 import { VerifiedBadge } from './auth/VerifiedBadge';
-import { roleLabelOf } from '@/lib/auth/types';
+import { publicRoleLabelOf } from '@/lib/auth/types';
 import { formatDuration } from '@/lib/metrolist/lyrics';
 import { filterTracksByQuery } from '@/lib/metrolist/statsEngine';
 import {
@@ -269,7 +269,7 @@ export function UserProfileDetail({ userId }: UserProfileDetailProps) {
                   )}
                 >
                   <VerifiedBadge role={profile.role} size="xs" />
-                  {roleLabelOf(profile.role)}
+                  {publicRoleLabelOf(profile.role)}
                 </span>
                 {joinedLabel && (
                   <span className="inline-flex items-center gap-1 text-xs text-[var(--m3-on-surface-variant)]">

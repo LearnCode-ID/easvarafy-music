@@ -24,6 +24,7 @@ import {
 import { useMusic } from './MusicProvider';
 import { ArtworkImage } from './ArtworkImage';
 import { TrackContextMenu } from './TrackContextMenu';
+import { DownloadButton } from './DownloadButton';
 import { SearchResultsSkeleton } from './Skeletons';
 import {
   searchLocalLibrary,
@@ -854,6 +855,7 @@ export function SearchView() {
                               </p>
                             </div>
                           </button>
+                          <DownloadButton track={track} />
                           <TrackContextMenu track={track} />
                         </div>
                       );
@@ -1221,6 +1223,7 @@ export function SearchView() {
                       <span className="text-[12px] opacity-55 tabular-nums shrink-0 hidden sm:inline">
                         {formatDuration(track.duration)}
                       </span>
+                      <DownloadButton track={track} />
                       <TrackContextMenu track={track} />
                     </div>
                   );

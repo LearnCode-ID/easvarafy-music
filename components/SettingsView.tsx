@@ -34,6 +34,7 @@ import {
   Search as SearchIcon,
   Shapes,
   SlidersHorizontal,
+  Smartphone,
   Sparkles,
   SquareRoundCorner,
   Sun,
@@ -47,7 +48,15 @@ import {
   X,
 } from 'lucide-react';
 import { useMusic } from './MusicProvider';
+import { clearAllDownloads, formatBytes, getOfflineStorageUsage } from '@/lib/metrolist/offlineAudio';
+import { useOfflineLibrary } from '@/lib/metrolist/useOfflineLibrary';
 import { AccountSettingsSection } from './AccountSettingsSection';
+import { AppUpdateSettingsCard } from './AppUpdateSettingsCard';
+import {
+  openNativeIslandSettings,
+  setNativeIslandEnabled,
+  useNativeIslandStatus,
+} from '@/lib/native/mediaControls';
 import { LyricsSettingsPreview } from './SyncedLyricsView';
 import { EQUALIZER_PRESETS } from '@/lib/metrolist/statsEngine';
 import { METROLIST_ACCENT_PALETTES } from '@/lib/metrolist/theme';
@@ -261,6 +270,175 @@ function PreferenceRow({
       </div>
       {trailing && <div className="shrink-0">{trailing}</div>}
     </Wrapper>
+  );
+}
+
+/** Storage used by downloaded songs + "hapus semua unduhan". */
+function OfflineDownloadsSettings() {
+  const { showToast, setActiveTab } = useMusic();
+  const { records, totalBytes, queue } = useOfflineLibrary();
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [quota, setQuota] = useState<number | null>(null);
+  const activeJobs = queue.order.length;
+
+  React.useEffect(() => {
+    let alive = true;
+    void getOfflineStorageUsage().then((u) => {
+      if (alive) setQuota(u.quotaBytes);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [records.length]);
+
+  return (
+    <>
+      <PreferenceRow
+        icon={HardDrive}
+        title="Lagu Tersimpan Offline"
+        description={`${records.length} lagu · ${formatBytes(totalBytes)}${
+          quota ? ` dari ~${formatBytes(quota)} tersedia` : ''
+        }${activeJobs > 0 ? ` · ${activeJobs} sedang diunduh` : ''}`}
+        onClick={() => setActiveTab('library')}
+        trailing={
+          <span className="px-3.5 py-1.5 rounded-full bg-[var(--m3-primary)]/14 text-[var(--m3-primary)] text-[12px] font-semibold">
+            Library
+          </span>
+        }
+      />
+      <PreferenceRow
+        icon={Trash2}
+        title="Hapus Semua Unduhan"
+        description={
+          records.length > 0
+            ? confirming
+              ? 'Ketuk sekali lagi untuk menghapus semua file lagu offline'
+              : `Kosongkan ${formatBytes(totalBytes)} penyimpanan lagu offline`
+            : 'Belum ada lagu yang diunduh'
+        }
+        accentTint="#F43F5E"
+        trailing={
+          <button
+            type="button"
+            data-testid="clear-all-downloads"
+            disabled={busy || (records.length === 0 && activeJobs === 0)}
+            onClick={() => {
+              if (!confirming) {
+                setConfirming(true);
+                setTimeout(() => setConfirming(false), 4000);
+                return;
+              }
+              setBusy(true);
+              clearAllDownloads()
+                .then(() => showToast('Semua unduhan dihapus'))
+                .catch(() => showToast('Gagal menghapus unduhan'))
+                .finally(() => {
+                  setBusy(false);
+                  setConfirming(false);
+                });
+            }}
+            className="px-3.5 h-8 rounded-full text-[12px] font-semibold bg-rose-500/12 text-rose-500 hover:bg-rose-500/20 disabled:opacity-35 disabled:cursor-not-allowed transition-colors"
+          >
+            {busy ? 'Menghapus…' : confirming ? 'Yakin?' : 'Hapus Semua'}
+          </button>
+        }
+      />
+    </>
+  );
+}
+
+/**
+ * Android APK only: Dynamic Island drawn by the system around the front camera,
+ * on top of every app (not inside the WebView).
+ */
+function SystemDynamicIslandSettings() {
+  const status = useNativeIslandStatus();
+  if (!status?.supported) return null;
+
+  const modeLabel =
+    status.mode === 'accessibility'
+      ? 'Aktif di sekitar kamera depan, di atas semua aplikasi'
+      : status.mode === 'overlay'
+        ? 'Aktif di bawah status bar. Aktifkan mode Aksesibilitas agar pas di kamera'
+        : 'Butuh izin agar bisa tampil di luar aplikasi';
+
+  const stepButton =
+    'px-3.5 h-8 rounded-full text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 transition-all';
+
+  return (
+    <>
+      <PreferenceRow
+        icon={Smartphone}
+        title="Dynamic Island Sistem"
+        description={status.enabled ? modeLabel : 'Mati — memakai Dynamic Island di dalam aplikasi'}
+        trailing={
+          <M3Switch
+            label="Dynamic Island Sistem"
+            checked={status.enabled}
+            onChange={() => void setNativeIslandEnabled(!status.enabled)}
+          />
+        }
+      />
+      {status.enabled && status.mode !== 'accessibility' && (
+        <div className="px-4 pb-4 pt-1 space-y-2.5">
+          <div className="rounded-2xl bg-black/[0.04] dark:bg-white/[0.05] p-3.5 space-y-3">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 w-6 h-6 rounded-full bg-[var(--m3-primary)] text-[var(--m3-on-primary)] text-[11px] font-bold flex items-center justify-center shrink-0">
+                1
+              </span>
+              <div className="min-w-0 flex-1 space-y-2">
+                <p className="text-[12.5px] leading-snug">
+                  <span className="font-semibold">Mode kamera (disarankan).</span>{' '}
+                  Buka Aksesibilitas → <span className="font-semibold">Easvarafy Dynamic Island</span> → aktifkan.
+                  Island akan berada tepat di sekitar kamera depan seperti iPhone.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void openNativeIslandSettings('accessibility')}
+                    className={`${stepButton} bg-[var(--m3-primary)] text-[var(--m3-on-primary)]`}
+                  >
+                    Buka Aksesibilitas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void openNativeIslandSettings('app')}
+                    className={`${stepButton} bg-black/[0.06] dark:bg-white/[0.08]`}
+                  >
+                    Info aplikasi
+                  </button>
+                </div>
+                <p className="text-[11.5px] opacity-60 leading-snug">
+                  Jika tombolnya abu-abu (&quot;Setelan terbatas&quot;): Info aplikasi → menu ⋮ →
+                  &quot;Izinkan setelan terbatas&quot;, lalu coba lagi.
+                </p>
+              </div>
+            </div>
+            {!status.overlayPermission && (
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 w-6 h-6 rounded-full bg-black/10 dark:bg-white/15 text-[11px] font-bold flex items-center justify-center shrink-0">
+                  2
+                </span>
+                <div className="min-w-0 flex-1 space-y-2">
+                  <p className="text-[12.5px] leading-snug">
+                    <span className="font-semibold">Alternatif.</span> Izinkan &quot;Tampil di atas aplikasi
+                    lain&quot;. Island muncul di bawah status bar.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void openNativeIslandSettings('overlay')}
+                    className={`${stepButton} bg-black/[0.06] dark:bg-white/[0.08]`}
+                  >
+                    Izinkan tampil di atas aplikasi
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1354,6 +1532,9 @@ export function SettingsView() {
               }
             />
 
+            {/* Android: system-wide Dynamic Island around the camera */}
+            <SystemDynamicIslandSettings />
+
             {/* Auto Pop-Out Dynamic Island */}
             <PreferenceRow
               icon={PictureInPicture2}
@@ -1793,7 +1974,7 @@ export function SettingsView() {
       {/* 4. STORAGE & BACKUP */}
       {showSection(
         'storage',
-        'storage backup restore export import json history search liked playlists reset clear'
+        'storage backup restore export import json history search liked playlists reset clear offline download unduhan'
       ) && (
         <section className="space-y-2.5">
           <h2 className="px-1 text-[12px] font-bold uppercase tracking-wider text-[var(--m3-primary)]">
@@ -1850,6 +2031,9 @@ export function SettingsView() {
                 </div>
               </div>
             </div>
+
+            {/* Offline downloads */}
+            <OfflineDownloadsSettings />
 
             {/* Backup & Restore (Real JSON Export / Import) */}
             <PreferenceRow
@@ -1948,11 +2132,12 @@ export function SettingsView() {
       )}
 
       {/* 5. ABOUT */}
-      {showSection('about', 'about sonara version ytmusic-api vercel') && (
+      {showSection('about', 'about sonara version ytmusic-api vercel update pembaruan versi cek') && (
         <section className="space-y-2.5">
           <h2 className="px-1 text-[12px] font-bold uppercase tracking-wider text-[var(--m3-primary)]">
             About
           </h2>
+          <AppUpdateSettingsCard />
           <div className="rounded-[24px] metro-surface p-4 flex items-center gap-3.5">
             <span
               className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
