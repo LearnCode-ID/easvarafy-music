@@ -23,6 +23,17 @@ export function isAdminRole(role: string | null | undefined): boolean {
   return role === 'admin';
 }
 
+/**
+ * Whether the admin-panel UI (Admin Dashboard / Admin Console shortcuts) may be
+ * shown. Strictly role `admin` and not banned — developers never see it.
+ */
+export function canSeeAdminUi(
+  role: string | null | undefined,
+  isBanned?: boolean | null
+): boolean {
+  return role === 'admin' && !isBanned;
+}
+
 /** Internal role label, used only inside the admin panel. */
 export function roleLabelOf(role: string | null | undefined): string {
   if (role === 'admin') return 'Admin';

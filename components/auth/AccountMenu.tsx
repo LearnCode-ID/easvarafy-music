@@ -7,7 +7,7 @@ import { LayoutDashboard, LogIn, LogOut, Settings, Trophy, User as UserIcon } fr
 import { useAuth } from './AuthProvider';
 import { VerifiedBadge } from './VerifiedBadge';
 import { useMusic } from '@/components/MusicProvider';
-import { displayNameOf, initialsOf, publicRoleLabelOf } from '@/lib/auth/types';
+import { canSeeAdminUi, displayNameOf, initialsOf, publicRoleLabelOf } from '@/lib/auth/types';
 import { cn } from '@/lib/utils';
 
 export function AccountAvatar({ size = 32 }: { size?: number }) {
@@ -87,7 +87,9 @@ function AccountSettingsButton({
 }
 
 function AccountMenuCard({ onNavigate }: { onNavigate?: () => void }) {
-  const { userId, profile, email, isAdmin, isBanned, signOut } = useAuth();
+  const { userId, profile, email, isBanned, signOut } = useAuth();
+  // Admin Dashboard link: role admin only (hidden for developer & user).
+  const showAdminLink = canSeeAdminUi(profile?.role, isBanned);
   const { openDetail, setActiveTab } = useMusic();
   const router = useRouter();
   const name = displayNameOf(profile, email);
@@ -109,7 +111,7 @@ function AccountMenuCard({ onNavigate }: { onNavigate?: () => void }) {
 
       <div className="h-px bg-[var(--m3-border)] my-2" />
 
-      {isAdmin && (
+      {showAdminLink && (
         <Link
           href="/admin/dashboard"
           onClick={onNavigate}

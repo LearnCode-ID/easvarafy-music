@@ -24,7 +24,7 @@ import { useAuth } from './auth/AuthProvider';
 import { AccountAvatar } from './auth/AccountMenu';
 import { VerifiedBadge } from './auth/VerifiedBadge';
 import { useMusic } from './MusicProvider';
-import { displayNameOf, publicRoleLabelOf } from '@/lib/auth/types';
+import { canSeeAdminUi, displayNameOf, publicRoleLabelOf } from '@/lib/auth/types';
 
 export function AccountSettingsSection() {
   const router = useRouter();
@@ -35,7 +35,7 @@ export function AccountSettingsSection() {
     userId,
     profile,
     email,
-    isAdmin,
+    isBanned,
     updateProfile,
     uploadAvatar,
     removeAvatar,
@@ -44,6 +44,8 @@ export function AccountSettingsSection() {
     signOut,
   } = useAuth();
   const { showToast, openDetail } = useMusic();
+  // Admin Console shortcut: role admin only (hidden for developer & user).
+  const showAdminConsole = canSeeAdminUi(profile?.role, isBanned);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -577,8 +579,8 @@ export function AccountSettingsSection() {
             )}
           </div>
 
-          {/* Admin Shortcut (only for admin) */}
-          {isAdmin && (
+          {/* Admin Shortcut (role admin only — never shown to developers) */}
+          {showAdminConsole && (
             <Link
               href="/admin/dashboard"
               className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
