@@ -15,6 +15,7 @@ import {
   Settings,
   SkipForward,
   Trophy,
+  UserRound,
 } from 'lucide-react';
 import { ArtworkImage } from './ArtworkImage';
 import {
@@ -22,7 +23,6 @@ import {
   registerLiquidGlassFilter,
 } from './LiquidGlassSurface';
 import { useMusic } from './MusicProvider';
-import { MobileAccountButton } from './auth/AccountMenu';
 import { NotificationBell } from './notifications/NotificationBell';
 import type { NavTab } from '@/lib/metrolist/types';
 import { cn } from '@/lib/utils';
@@ -36,6 +36,7 @@ const MOBILE_TABS: Array<{
   { id: 'search', label: 'Search', icon: Search },
   { id: 'charts', label: 'Explore', icon: Compass },
   { id: 'library', label: 'Library', icon: Library },
+  { id: 'profile', label: 'Profil', icon: UserRound },
 ];
 
 const LIQUID_SPRING = {
@@ -55,7 +56,7 @@ export function MobileTopBar() {
   const { setActiveTab, activeTab, openDetail } = useMusic();
 
   return (
-    <header className="lg:hidden sticky top-0 z-30 h-[52px] px-3 flex items-center justify-between bg-[var(--m3-bg)]/95 border-b border-[var(--m3-border)]">
+    <header className="lg:hidden sticky top-0 z-30 h-[calc(52px+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] px-3 flex items-center justify-between bg-[var(--m3-bg)]/95 border-b border-[var(--m3-border)]">
       <div className="flex items-center gap-1 shrink-0">
         <button
           type="button"
@@ -91,7 +92,6 @@ export function MobileTopBar() {
         >
           <Trophy className="w-5 h-5" />
         </button>
-        <MobileAccountButton />
         <button
           type="button"
           onClick={() => setActiveTab('settings')}
@@ -200,7 +200,7 @@ export function MobileBottomTabs() {
     if (typeof window === 'undefined' || !isLiquidGlass) return;
     const dockW = Math.min(448, Math.max(280, window.innerWidth - 24));
     const compactCenterW = Math.max(120, dockW - 54 * 2 - 20);
-    const dropletW = Math.max(64, Math.round(dockW / 4));
+    const dropletW = Math.max(64, Math.round(dockW / 5));
     registerLiquidGlassFilter('pill', dockW, 52);
     registerLiquidGlassFilter('pill', dockW, 62);
     registerLiquidGlassFilter('orb', 54, 54);
@@ -429,13 +429,14 @@ export function MobileBottomTabs() {
           aria-label="Mobile navigation"
           className="bg-[var(--m3-surface)] border-t border-[var(--m3-border)] pb-[env(safe-area-inset-bottom)]"
         >
-          <div className="max-w-md mx-auto h-[64px] grid grid-cols-4 items-center px-2">
+          <div className="max-w-md mx-auto h-[64px] grid grid-cols-5 items-center px-2">
             {MOBILE_TABS.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id && !detailTarget;
               return (
                 <button
                   key={tab.id}
+                  aria-current={isActive ? 'page' : undefined}
                   type="button"
                   onClick={() => handleSelectTab(tab.id)}
                   className="flex flex-col items-center justify-center gap-1 h-full active:scale-95 transition-transform"
@@ -735,7 +736,7 @@ export function MobileBottomTabs() {
                 onPointerMove={handleNavPointerMove}
                 onPointerUp={handleNavPointerUp}
                 onPointerCancel={handleNavPointerCancel}
-                className="relative h-[62px] rounded-full p-1.5 grid grid-cols-4 items-center gap-0.5 touch-none select-none overflow-visible cursor-grab active:cursor-grabbing"
+                className="relative h-[62px] rounded-full p-1.5 grid grid-cols-5 items-center gap-0.5 touch-none select-none overflow-visible cursor-grab active:cursor-grabbing"
               >
                 {/* Dedicated SVG Refraction Backdrop Layer (sibling of tabs & droplet so overflow-visible droplet never clips) */}
                 <LiquidGlassBackdropLayer
@@ -755,7 +756,7 @@ export function MobileBottomTabs() {
                         opacity: 1,
                         scaleX: 1.08,
                         scaleY: 1.24,
-                        left: `calc(${dragLens.centerPercent}% - 12.5%)`,
+                        left: `calc(${dragLens.centerPercent}% - 10%)`,
                       }}
                       exit={{ opacity: 0, scale: 0.94 }}
                       transition={{
@@ -764,7 +765,7 @@ export function MobileBottomTabs() {
                         scaleY: LIQUID_SPRING,
                         opacity: { duration: 0.14 },
                       }}
-                      className="pointer-events-none absolute top-1 bottom-1 w-1/4 rounded-full z-20"
+                      className="pointer-events-none absolute top-1 bottom-1 w-1/5 rounded-full z-20"
                     >
                       <LiquidGlassBackdropLayer
                         preset="droplet"
@@ -783,6 +784,7 @@ export function MobileBottomTabs() {
                   return (
                     <button
                       key={tab.id}
+                      aria-current={activeTabIndex === idx ? 'page' : undefined}
                       type="button"
                       onClick={() => {
                         if (suppressNextClickRef.current) return;

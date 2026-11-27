@@ -347,7 +347,7 @@ export function AccountSettingsSection() {
                   disabled={avatarBusy}
                   onClick={() => {
                     setUrlEditorOpen((v) => !v);
-                    setAvatarUrlDraft(profile?.avatar_url || '');
+                    setAvatarUrlDraft(profile?.avatar_url?.startsWith('https://') ? profile.avatar_url : '');
                   }}
                   className="h-9 px-3.5 rounded-full bg-black/[0.06] dark:bg-white/[0.08] text-[12.5px] font-semibold inline-flex items-center gap-1.5 hover:bg-black/10 dark:hover:bg-white/15 disabled:opacity-50 transition-colors"
                 >

@@ -53,6 +53,7 @@ export interface PublicUserPlaylist {
   tags: string[];
   tracks: Track[];
   is_public: boolean;
+  cover_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -191,7 +192,8 @@ export async function fetchMonthlyTopListeners(
     last_track_video_id: typeof r.last_track_video_id === 'string' ? r.last_track_video_id : null,
     last_track_title: typeof r.last_track_title === 'string' ? r.last_track_title : null,
     last_track_artist: typeof r.last_track_artist === 'string' ? r.last_track_artist : null,
-    last_track_thumbnail: typeof r.last_track_thumbnail === 'string' ? r.last_track_thumbnail : null,
+    last_track_thumbnail:
+      typeof r.last_track_thumbnail === 'string' ? r.last_track_thumbnail : null,
     playlist_count: Number(r.playlist_count ?? 0),
     liked_count: Number(r.liked_count ?? 0),
     rank: Number(r.rank ?? 0),
@@ -228,7 +230,8 @@ export async function fetchPublicProfile(
       last_track_video_id: typeof r.last_track_video_id === 'string' ? r.last_track_video_id : null,
       last_track_title: typeof r.last_track_title === 'string' ? r.last_track_title : null,
       last_track_artist: typeof r.last_track_artist === 'string' ? r.last_track_artist : null,
-      last_track_thumbnail: typeof r.last_track_thumbnail === 'string' ? r.last_track_thumbnail : null,
+      last_track_thumbnail:
+        typeof r.last_track_thumbnail === 'string' ? r.last_track_thumbnail : null,
       playlist_count: Number(r.playlist_count ?? 0),
       liked_count: Number(r.liked_count ?? 0),
     },
@@ -258,17 +261,18 @@ export async function searchPublicProfiles(
   return { rows };
 }
 
-export async function fetchPublicUserPlaylists(
-  userId: string
-): Promise<PublicUserPlaylist[]> {
+export async function fetchPublicUserPlaylists(userId: string): Promise<PublicUserPlaylist[]> {
   if (!isSupabaseConfigured || !userId) return [];
   const { data, error } = await supabase
     .from('user_playlists')
-    .select('id, user_id, name, description, tags, tracks, is_public, created_at, updated_at')
+    .select(
+      'id, user_id, name, description, tags, tracks, cover_url, is_public, created_at, updated_at'
+    )
     .eq('user_id', userId)
     .order('updated_at', { ascending: false });
 
-  if (error || !data) return [];
+  if (error) throw new Error(error.message);
+  if (!data) return [];
   return (data as Array<Record<string, unknown>>).map((row) => ({
     id: String(row.id),
     user_id: String(row.user_id),
@@ -276,7 +280,8 @@ export async function fetchPublicUserPlaylists(
     description: String(row.description || ''),
     tags: Array.isArray(row.tags) ? row.tags.map(String) : [],
     tracks: Array.isArray(row.tracks) ? (row.tracks as Track[]) : [],
-    is_public: row.is_public !== false,
+    is_public: row.is_public === true,
+    cover_url: typeof row.cover_url === 'string' ? row.cover_url : null,
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
   }));
@@ -308,7 +313,9 @@ export async function fetchOwnCloudLibrary(userId: string): Promise<{
     const [plRes, likedRes] = await Promise.all([
       supabase
         .from('user_playlists')
-        .select('id, name, description, tags, tracks, created_at, updated_at')
+        .select(
+          'id, name, description, tags, tracks, cover_url, is_public, version, created_at, updated_at'
+        )
         .eq('user_id', userId)
         .order('updated_at', { ascending: false }),
       supabase
@@ -333,7 +340,9 @@ export async function fetchOwnCloudLibrary(userId: string): Promise<{
           createdAt: row.created_at ? new Date(String(row.created_at)).getTime() : Date.now(),
           updatedAt: row.updated_at ? new Date(String(row.updated_at)).getTime() : Date.now(),
           tracks,
-          coverUrl: tracks[0]?.thumbnail,
+          coverUrl: typeof row.cover_url === 'string' ? row.cover_url : tracks[0]?.thumbnail,
+          isPublic: row.is_public === true,
+          version: Number(row.version || 1),
         };
       }
     );
@@ -348,83 +357,51 @@ export async function fetchOwnCloudLibrary(userId: string): Promise<{
   }
 }
 
+export function playlistFromRow(row: Record<string, unknown>): UserPlaylist {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    description: String(row.description || ''),
+    tags: (row.tags || []) as string[],
+    tracks: (row.tracks || []) as Track[],
+    coverUrl: typeof row.cover_url === 'string' ? row.cover_url : undefined,
+    isPublic: row.is_public === true,
+    version: Number(row.version),
+    createdAt: new Date(String(row.created_at)).getTime(),
+    updatedAt: new Date(String(row.updated_at)).getTime(),
+  };
+}
 export async function upsertOwnPlaylistToCloud(
   userId: string,
   playlist: UserPlaylist
-): Promise<void> {
-  if (!isSupabaseConfigured || !userId || !playlist.id || playlist.id === 'login-required') return;
-  try {
-    await supabase.from('user_playlists').upsert(
-      {
-        id: playlist.id,
-        user_id: userId,
-        name: playlist.name,
-        description: playlist.description ?? '',
-        tags: playlist.tags ?? [],
-        tracks: playlist.tracks,
-        is_public: true,
-        created_at: new Date(playlist.createdAt || Date.now()).toISOString(),
-        updated_at: new Date(playlist.updatedAt || Date.now()).toISOString(),
-      },
-      { onConflict: 'user_id,id' }
-    );
-  } catch {
-    // non-fatal
-  }
+): Promise<UserPlaylist> {
+  if (!isSupabaseConfigured || !userId) throw new Error('Login diperlukan.');
+  const { data, error } = await supabase.rpc('save_user_playlist', {
+    p_playlist: { ...playlist, ownerId: userId },
+    p_expected_version: playlist.version || 0,
+  });
+  if (error) throw new Error(error.message);
+  return playlistFromRow(data as Record<string, unknown>);
 }
-
 export async function deleteOwnPlaylistFromCloud(
   userId: string,
   playlistId: string
 ): Promise<void> {
-  if (!isSupabaseConfigured || !userId || !playlistId) return;
-  try {
-    await supabase
-      .from('user_playlists')
-      .delete()
-      .eq('user_id', userId)
-      .eq('id', playlistId);
-  } catch {
-    // non-fatal
-  }
+  const { error } = await supabase
+    .from('user_playlists')
+    .delete()
+    .eq('user_id', userId)
+    .eq('id', playlistId);
+  if (error) throw new Error(error.message);
 }
-
-export async function syncOwnAllPlaylistsToCloud(
-  userId: string,
-  playlists: UserPlaylist[]
-): Promise<void> {
-  if (!isSupabaseConfigured || !userId) return;
-  const valid = playlists.filter((p) => p.id && p.id !== 'login-required');
-  if (valid.length === 0) return;
-  try {
-    await supabase.from('user_playlists').upsert(
-      valid.map((pl) => ({
-        id: pl.id,
-        user_id: userId,
-        name: pl.name,
-        description: pl.description ?? '',
-        tags: pl.tags ?? [],
-        tracks: pl.tracks,
-        is_public: true,
-        created_at: new Date(pl.createdAt || Date.now()).toISOString(),
-        updated_at: new Date(pl.updatedAt || Date.now()).toISOString(),
-      })),
-      { onConflict: 'user_id,id' }
-    );
-  } catch {
-    // non-fatal
-  }
-}
-
 export async function setOwnLikedTrackInCloud(
   userId: string,
   track: Track,
   liked: boolean
 ): Promise<void> {
-  if (!isSupabaseConfigured || !userId || !track?.videoId) return;
-  try {
-    if (liked) {
-      await supabase.from('user_liked_tracks').upsert(
+  if (!isSupabaseConfigured || !userId || !track?.videoId) throw new Error('Login diperlukan.');
+  const query = liked
+    ? supabase.from('user_liked_tracks').upsert(
         {
           user_id: userId,
           video_id: track.videoId,
@@ -432,36 +409,15 @@ export async function setOwnLikedTrackInCloud(
           liked_at: new Date().toISOString(),
         },
         { onConflict: 'user_id,video_id' }
-      );
-    } else {
-      await supabase
+      )
+    : supabase
         .from('user_liked_tracks')
         .delete()
         .eq('user_id', userId)
         .eq('video_id', track.videoId);
-    }
-  } catch {
-    // non-fatal
-  }
+  const { error } = await query;
+  if (error) throw new Error(error.message);
 }
-
-export async function syncOwnAllLikedTracksToCloud(
-  userId: string,
-  tracks: Track[]
-): Promise<void> {
-  if (!isSupabaseConfigured || !userId || tracks.length === 0) return;
-  try {
-    const now = Date.now();
-    await supabase.from('user_liked_tracks').upsert(
-      tracks.map((track, idx) => ({
-        user_id: userId,
-        video_id: track.videoId,
-        track,
-        liked_at: new Date(now - idx * 1000).toISOString(),
-      })),
-      { onConflict: 'user_id,video_id' }
-    );
-  } catch {
-    // non-fatal
-  }
+export async function syncOwnAllLikedTracksToCloud(userId: string, tracks: Track[]): Promise<void> {
+  for (const track of tracks) await setOwnLikedTrackInCloud(userId, track, true);
 }

@@ -92,6 +92,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const videoId = (searchParams.get('videoId') || '').trim();
   const gl = searchParams.get('gl') || 'ID';
+  const strictRelated = searchParams.get('strict') === 'true' && searchParams.get('mode') === 'related';
   const rawMode = (searchParams.get('mode') || 'mixed').toLowerCase();
   const mode: UpNextMode =
     rawMode === 'related' || rawMode === 'discover' ? rawMode : 'mixed';
@@ -143,8 +144,8 @@ export async function GET(req: NextRequest) {
     if (mode === 'related') {
       const cleanRelated = dedupeTracks(relatedTracks, videoId);
       const tracks =
-        cleanRelated.length > 0 ? cleanRelated : shuffleArray(discoveryPool).slice(0, 20);
-      return NextResponse.json({ tracks, mode });
+        cleanRelated.length > 0 || strictRelated ? cleanRelated : shuffleArray(discoveryPool).slice(0, 20);
+      return NextResponse.json({ tracks, mode, ...(strictRelated && relatedRes.status === 'rejected' ? {degraded:true} : {}) });
     }
 
     if (mode === 'discover') {
@@ -156,6 +157,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ tracks, mode });
   } catch (error) {
     console.error('UpNext API error:', error);
+    if (strictRelated) return NextResponse.json({ tracks: [], mode, degraded: true }, { status: 502 });
     return NextResponse.json({
       tracks: shuffleArray(SEED_TRACKS.filter((t) => t.videoId !== videoId)),
       mode,

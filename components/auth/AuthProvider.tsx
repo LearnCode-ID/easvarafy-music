@@ -26,6 +26,7 @@ import {
   onNativeAuthCallback,
   passwordResetRedirectUrl,
 } from '@/lib/auth/native';
+import { releaseImage } from '@/lib/social/profilePage';
 import { isAdminRole, type Profile, type UserRole } from '@/lib/auth/types';
 import { LoginPromptDialog } from './LoginPromptDialog';
 
@@ -105,24 +106,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [promptMessage, setPromptMessage] = useState<string | undefined>(undefined);
   const handledCallbackRef = useRef<string | null>(null);
 
+  const activeUserRef = useRef<string | null>(null);
   const loadProfile = useCallback(async (uid: string | null) => {
     if (!uid || !isSupabaseConfigured) {
       setProfile(null);
       return null;
     }
     const next = (await fetchProfile(uid)) ?? (await ensureProfile());
-    setProfile(next);
+    if (activeUserRef.current !== uid) {
+      releaseImage(next?.avatar_url);
+      return null;
+    }
+    setProfile((previous) => {
+      releaseImage(previous?.avatar_url);
+      return next;
+    });
     return next;
   }, []);
 
   const applySessionUser = useCallback(
     async (session: { user: { id: string; email?: string | null } } | null) => {
       if (!session?.user) {
+        activeUserRef.current = null;
         setUserId(null);
         setEmail(null);
-        setProfile(null);
+        setProfile((previous) => {
+          releaseImage(previous?.avatar_url);
+          return null;
+        });
         return;
       }
+      if (activeUserRef.current !== session.user.id)
+        setProfile((previous) => {
+          releaseImage(previous?.avatar_url);
+          return null;
+        });
+      activeUserRef.current = session.user.id;
       setUserId(session.user.id);
       setEmail(session.user.email ?? null);
       const nextProfile = await loadProfile(session.user.id);
@@ -149,7 +168,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const result = await updateOwnProfile(patch);
       if (result.error) return { error: result.error };
       if (result.profile !== undefined) {
-        setProfile(result.profile);
+        setProfile((previous) => {
+          if (result.profile?.id !== activeUserRef.current) return previous;
+          releaseImage(previous?.avatar_url);
+          return result.profile ?? null;
+        });
       } else {
         await refreshProfile();
       }
@@ -163,7 +186,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const result = await uploadOwnAvatar(file);
       if (result.error) return { error: result.error };
       if (result.profile !== undefined) {
-        setProfile(result.profile);
+        setProfile((previous) => {
+          if (result.profile?.id !== activeUserRef.current) return previous;
+          releaseImage(previous?.avatar_url);
+          return result.profile ?? null;
+        });
       } else {
         await refreshProfile();
       }
@@ -176,7 +203,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const result = await removeOwnAvatar();
     if (result.error) return { error: result.error };
     if (result.profile !== undefined) {
-      setProfile(result.profile);
+      setProfile((previous) => {
+        if (result.profile?.id !== activeUserRef.current) return previous;
+        releaseImage(previous?.avatar_url);
+        return result.profile ?? null;
+      });
     } else {
       await refreshProfile();
     }
@@ -186,7 +217,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Bootstrap session + subscribe to auth changes.
   useEffect(() => {
     if (!isSupabaseConfigured) {
-      setReady(true);
+      queueMicrotask(() => setReady(true));
       return;
     }
     let cancelled = false;
@@ -216,9 +247,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const exchangeCode = useCallback(
     async (code: string) => {
       const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-      if (error) return { error: translateAuthError(error.message, error.code) } as AuthResult;
-      const nextProfile =
-        (await loadProfile(data.user?.id ?? null)) ?? (await ensureProfile());
+      if (error)
+        return {
+          error: translateAuthError(error.message, error.code),
+        } as AuthResult;
+      const nextProfile = (await loadProfile(data.user?.id ?? null)) ?? (await ensureProfile());
       const target = homeForRole(nextProfile?.role ?? 'user');
       return { destination: target } as AuthResult;
     },
@@ -263,28 +296,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return cleanup;
   }, [exchangeCode, router]);
 
-  const signInWithEmail = useCallback(async (emailInput: string, password: string) => {
-    if (!isSupabaseConfigured)
-      return { error: 'Supabase belum dikonfigurasi. Isi .env.local dulu ya.' } as AuthResult;
+  const signInWithEmail = useCallback(
+    async (emailInput: string, password: string) => {
+      if (!isSupabaseConfigured)
+        return {
+          error: 'Supabase belum dikonfigurasi. Isi .env.local dulu ya.',
+        } as AuthResult;
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: emailInput.trim().toLowerCase(),
-      password,
-    });
-    if (error) return { error: translateAuthError(error.message, error.code) } as AuthResult;
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: emailInput.trim().toLowerCase(),
+        password,
+      });
+      if (error)
+        return {
+          error: translateAuthError(error.message, error.code),
+        } as AuthResult;
 
-    const nextProfile =
-      (await loadProfile(data.user?.id ?? null)) ?? (await ensureProfile());
-    if (nextProfile?.is_banned)
-      return { error: 'Akun kamu sedang diblokir. Hubungi admin Easvarafy ya.' } as AuthResult;
+      const nextProfile = (await loadProfile(data.user?.id ?? null)) ?? (await ensureProfile());
+      if (nextProfile?.is_banned)
+        return {
+          error: 'Akun kamu sedang diblokir. Hubungi admin Easvarafy ya.',
+        } as AuthResult;
 
-    return { destination: homeForRole(nextProfile?.role ?? 'user') } as AuthResult;
-  }, [loadProfile]);
+      return {
+        destination: homeForRole(nextProfile?.role ?? 'user'),
+      } as AuthResult;
+    },
+    [loadProfile]
+  );
 
   const signUpWithEmail = useCallback(
-    async ({ name, email: emailInput, password }: { name: string; email: string; password: string }) => {
+    async ({
+      name,
+      email: emailInput,
+      password,
+    }: {
+      name: string;
+      email: string;
+      password: string;
+    }) => {
       if (!isSupabaseConfigured)
-        return { error: 'Supabase belum dikonfigurasi. Isi .env.local dulu ya.' } as AuthResult;
+        return {
+          error: 'Supabase belum dikonfigurasi. Isi .env.local dulu ya.',
+        } as AuthResult;
 
       const normalizedEmail = emailInput.trim().toLowerCase();
       const { data, error } = await supabase.auth.signUp({
@@ -293,18 +347,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         options: {
           data: { name: name.trim(), full_name: name.trim() },
           emailRedirectTo:
-            typeof window !== 'undefined'
-              ? `${window.location.origin}/auth/callback`
-              : undefined,
+            typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined,
         },
       });
-      if (error) return { error: translateAuthError(error.message, error.code) } as AuthResult;
+      if (error)
+        return {
+          error: translateAuthError(error.message, error.code),
+        } as AuthResult;
 
       // With email confirmation enabled there is no session yet — the profile row
       // is created right here (RLS allows insert for own id) and confirmed later.
       if (data.session?.user) {
         await ensureProfile({ name: name.trim() });
-        return { destination: '/', needsEmailConfirmation: false } as AuthResult;
+        return {
+          destination: '/',
+          needsEmailConfirmation: false,
+        } as AuthResult;
       }
 
       // Try to pre-create the profile row so the admin panel sees the account.
@@ -316,14 +374,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           role: 'user',
         });
       }
-      return { needsEmailConfirmation: true, destination: '/login' } as AuthResult;
+      return {
+        needsEmailConfirmation: true,
+        destination: '/login',
+      } as AuthResult;
     },
     []
   );
 
   const signInWithGoogle = useCallback(async () => {
     if (!isSupabaseConfigured)
-      return { error: 'Supabase belum dikonfigurasi. Isi .env.local dulu ya.' } as AuthResult;
+      return {
+        error: 'Supabase belum dikonfigurasi. Isi .env.local dulu ya.',
+      } as AuthResult;
 
     const redirectTo = oauthRedirectUrl('/auth/callback');
     const { data, error } = await supabase.auth.signInWithOAuth({
@@ -337,7 +400,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       },
     });
-    if (error) return { error: translateAuthError(error.message, error.code) } as AuthResult;
+    if (error)
+      return {
+        error: translateAuthError(error.message, error.code),
+      } as AuthResult;
     if (!data?.url) return { error: 'Tidak bisa memulai login Google.' } as AuthResult;
 
     if (isNativeApp()) {
@@ -360,18 +426,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const sendPasswordReset = useCallback(async (emailInput: string) => {
     if (!isSupabaseConfigured) return { error: 'Supabase belum dikonfigurasi.' } as AuthResult;
-    const { error } = await supabase.auth.resetPasswordForEmail(
-      emailInput.trim().toLowerCase(),
-      { redirectTo: passwordResetRedirectUrl() }
-    );
-    if (error) return { error: translateAuthError(error.message, error.code) } as AuthResult;
+    const { error } = await supabase.auth.resetPasswordForEmail(emailInput.trim().toLowerCase(), {
+      redirectTo: passwordResetRedirectUrl(),
+    });
+    if (error)
+      return {
+        error: translateAuthError(error.message, error.code),
+      } as AuthResult;
     return {} as AuthResult;
   }, []);
 
   const updatePassword = useCallback(async (password: string) => {
     if (!isSupabaseConfigured) return { error: 'Supabase belum dikonfigurasi.' } as AuthResult;
     const { error } = await supabase.auth.updateUser({ password });
-    if (error) return { error: translateAuthError(error.message, error.code) } as AuthResult;
+    if (error)
+      return {
+        error: translateAuthError(error.message, error.code),
+      } as AuthResult;
     return {} as AuthResult;
   }, []);
 

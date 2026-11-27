@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Plus_Jakarta_Sans, DM_Sans, JetBrains_Mono } from 'next/font/google';
+import localFont from 'next/font/local';
 import { AuthProvider } from '@/components/auth/AuthProvider';
 import { ServiceWorkerRegistrar } from '@/components/ServiceWorkerRegistrar';
 import { AppUpdateModal } from '@/components/AppUpdateModal';
@@ -7,23 +7,23 @@ import { NotificationBootstrap } from '@/components/notifications/NotificationBo
 import { BackButtonBridge } from '@/components/native/BackButtonBridge';
 import './globals.css';
 
-const plusJakarta = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  weight: ['500', '600', '700'],
+const plusJakarta = localFont({
+  src: '../public/fonts/plus-jakarta-sans-latin.woff2',
+  weight: '500 700',
   variable: '--font-jakarta',
   display: 'swap',
 });
 
-const dmSans = DM_Sans({
-  subsets: ['latin'],
-  weight: ['400', '500', '700'],
+const dmSans = localFont({
+  src: '../public/fonts/dm-sans-latin.woff2',
+  weight: '400 700',
   variable: '--font-dm-sans',
   display: 'swap',
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500'],
+const jetbrainsMono = localFont({
+  src: '../public/fonts/jetbrains-mono-latin.woff2',
+  weight: '400 500',
   variable: '--font-jetbrains',
   display: 'swap',
 });
