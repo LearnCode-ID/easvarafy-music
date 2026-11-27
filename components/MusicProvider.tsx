@@ -81,6 +81,7 @@ import {
   resolveOfflinePlaybackUrl,
   subscribeOffline,
 } from '@/lib/metrolist/offlineAudio';
+import { BACK_PRIORITY_PAGE, useBackHandler } from '@/lib/native/backButton';
 
 declare global {
   interface Window {
@@ -1478,6 +1479,24 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const openDetail = useCallback((target: DetailTarget | null) => {
     setDetailTarget(target);
   }, []);
+
+  // Android back at page level: detail page -> its tab -> Home tab. Sheets and
+  // the full player register their own (higher) handlers.
+  useBackHandler(
+    true,
+    () => {
+      if (detailTarget) {
+        setDetailTarget(null);
+        return true;
+      }
+      if (activeTab !== 'home') {
+        setActiveTabState('home');
+        return true;
+      }
+      return false;
+    },
+    BACK_PRIORITY_PAGE
+  );
 
   const playTrack = useCallback((track: Track, contextQueue?: Track[]) => {
     userPausedRef.current = false;

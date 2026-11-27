@@ -12,6 +12,7 @@ import {
   removeDownloadedTrack,
 } from '@/lib/metrolist/offlineAudio';
 import { useOfflineTrackState, type OfflineTrackState } from '@/lib/metrolist/useOfflineLibrary';
+import { useBackHandler } from '@/lib/native/backButton';
 
 /** Starts a download and reports the result through the app toast. */
 export function useTrackDownloadActions() {
@@ -114,6 +115,7 @@ export function DownloadButton({ track, variant = 'icon', className = '' }: Down
   const state = useOfflineTrackState(track.videoId);
   const { start, remove, cancel } = useTrackDownloadActions();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  useBackHandler(confirmOpen, () => setConfirmOpen(false));
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {

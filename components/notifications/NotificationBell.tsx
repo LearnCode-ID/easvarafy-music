@@ -13,12 +13,14 @@ import {
   useNotifications,
 } from '@/lib/notifications/client';
 import { categoryMeta, formatRelativeTime, type InboxItem } from '@/lib/notifications/shared';
+import { useBackHandler } from '@/lib/native/backButton';
 
 /** Bell icon with unread badge + inbox panel of past broadcasts. */
 export function NotificationBell({ variant = 'mobile' }: { variant?: 'mobile' | 'sidebar' }) {
   const { items } = useNotifications();
   const [open, setOpen] = useState(false);
   const unread = unreadCount(items);
+  useBackHandler(open, () => setOpen(false));
 
   return (
     <>

@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { LogIn, UserPlus, X } from 'lucide-react';
+import { useBackHandler } from '@/lib/native/backButton';
 
 interface Props {
   open: boolean;
@@ -15,6 +16,7 @@ interface Props {
  * or save an item. Playback itself stays open to guests.
  */
 export function LoginPromptDialog({ open, message, onClose }: Props) {
+  useBackHandler(open, onClose);
   if (!open) return null;
 
   return (

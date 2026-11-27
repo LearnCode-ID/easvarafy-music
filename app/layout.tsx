@@ -4,6 +4,7 @@ import { AuthProvider } from '@/components/auth/AuthProvider';
 import { ServiceWorkerRegistrar } from '@/components/ServiceWorkerRegistrar';
 import { AppUpdateModal } from '@/components/AppUpdateModal';
 import { NotificationBootstrap } from '@/components/notifications/NotificationBootstrap';
+import { BackButtonBridge } from '@/components/native/BackButtonBridge';
 import './globals.css';
 
 const plusJakarta = Plus_Jakarta_Sans({
@@ -72,6 +73,7 @@ export default function RootLayout({
           {children}
           <NotificationBootstrap />
           <AppUpdateModal />
+          <BackButtonBridge />
         </AuthProvider>
         <ServiceWorkerRegistrar />
       </body>

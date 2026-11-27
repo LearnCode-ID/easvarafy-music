@@ -19,6 +19,7 @@ import { useMusic } from './MusicProvider';
 import { findActiveLyricIndex, formatDuration } from '@/lib/metrolist/lyrics';
 import { cn } from '@/lib/utils';
 import { useNativeIslandStatus } from '@/lib/native/mediaControls';
+import { useBackHandler } from '@/lib/native/backButton';
 
 export function DynamicIsland() {
   const {
@@ -42,6 +43,7 @@ export function DynamicIsland() {
   } = useMusic();
 
   const [expanded, setExpanded] = useState(false);
+  useBackHandler(expanded, () => setExpanded(false));
   // Android APK: the island is drawn by the system around the front camera,
   // on top of every app, so the in-app copy steps aside.
   const nativeIsland = useNativeIslandStatus();

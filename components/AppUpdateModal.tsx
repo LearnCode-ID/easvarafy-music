@@ -10,6 +10,7 @@ import {
   useAppUpdate,
 } from '@/lib/app/updateCheck';
 import { formatVersionLabel } from '@/lib/app/version';
+import { useBackHandler } from '@/lib/native/backButton';
 
 /**
  * In-app "Update tersedia" popup for the Android APK.
@@ -19,6 +20,10 @@ import { formatVersionLabel } from '@/lib/app/version';
 export function AppUpdateModal() {
   const update = useAppUpdate();
   const lastAutoCheck = useRef(0);
+  // Android back = "Nanti" (a forced update cannot be dismissed).
+  useBackHandler(update.open, () => {
+    if (!update.force) dismissAppUpdate();
+  });
 
   useEffect(() => {
     if (!isNativeApp()) return;
