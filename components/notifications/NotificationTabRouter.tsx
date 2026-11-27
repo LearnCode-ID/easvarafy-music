@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { useMusic } from '@/components/MusicProvider';
 import { consumePendingTab, OPEN_TAB_EVENT } from '@/lib/notifications/client';
@@ -12,6 +13,12 @@ import type { NavTab } from '@/lib/metrolist/types';
  */
 export function NotificationTabRouter() {
   const { setActiveTab } = useMusic();
+  const router = useRouter();
+  useEffect(()=>{
+    const open = (event:Event)=>{const path=(event as CustomEvent<{path:string}>).detail?.path;if(path && /^\/blend(?:\?|$)/.test(path))router.push(path);};
+    window.addEventListener('easvarafy:open-blend-path',open);
+    return()=>window.removeEventListener('easvarafy:open-blend-path',open);
+  },[router]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

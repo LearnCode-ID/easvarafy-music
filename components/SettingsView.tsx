@@ -530,7 +530,7 @@ export function SettingsView() {
     if (!file) return;
     try {
       const text = await file.text();
-      const result = importLibraryBackup(text);
+      const result = await importLibraryBackup(text);
       if (!result.ok) {
         showToast(result.message);
       }

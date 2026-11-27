@@ -1,5 +1,8 @@
 'use client';
 
+import { FollowButton } from './FollowControls';
+import { FollowingFeed } from './FollowingFeed';
+import { ProfileAvatar } from './ProfileAvatar';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Clock3,
@@ -54,11 +57,9 @@ function UserAvatarCircle({
 
   if (avatarUrl) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={avatarUrl}
-        alt={name}
-        referrerPolicy="no-referrer"
+      <ProfileAvatar
+        reference={avatarUrl}
+        name={name}
         className={cn(sizeClass, 'shrink-0 rounded-full object-cover ring-2 ring-white/10')}
       />
     );
@@ -87,6 +88,7 @@ export function ListenersView() {
   const [loadingBoard, setLoadingBoard] = useState(true);
   const [boardError, setBoardError] = useState<string | null>(null);
 
+  const [socialTab, setSocialTab] = useState<'discover'|'following'>('discover');
   const [searchQuery, setSearchQuery] = useState('');
   const [directory, setDirectory] = useState<PublicProfileSummary[]>([]);
   const [loadingDirectory, setLoadingDirectory] = useState(true);
@@ -112,25 +114,24 @@ export function ListenersView() {
       setLoadingBoard(false);
     };
     void run();
-    return () => {
-      active = false;
-    };
+    const timer = setInterval(() => void run(),30000);
+    window.addEventListener('focus',run);
+    return () => { active = false; clearInterval(timer); window.removeEventListener('focus',run); };
   }, [selectedMonth]);
 
   useEffect(() => {
     let active = true;
-    const timer = setTimeout(async () => {
+    const run = async () => {
       setLoadingDirectory(true);
       const res = await searchPublicProfiles(searchQuery, 24);
       if (!active) return;
       setDirectory(res.rows);
       setLoadingDirectory(false);
-    }, 220);
-
-    return () => {
-      active = false;
-      clearTimeout(timer);
     };
+    const timer = setTimeout(run,220);
+    const interval = setInterval(run,30000);
+    window.addEventListener('focus',run);
+    return () => { active = false; clearTimeout(timer); clearInterval(interval); window.removeEventListener('focus',run); };
   }, [searchQuery]);
 
   const visitProfile = (id: string, name: string) => {
@@ -181,6 +182,9 @@ export function ListenersView() {
         </div>
       </div>
 
+      <div role="tablist" aria-label="Komunitas" className="flex gap-2"><button role="tab" aria-selected={socialTab==='discover'} className="profile-button" onClick={()=>setSocialTab('discover')}>Temukan</button><button role="tab" aria-selected={socialTab==='following'} className="profile-button" onClick={()=>setSocialTab('following')}>Following</button></div>
+      {socialTab==='following' && <FollowingFeed/>}
+      <div hidden={socialTab!=='discover'} className="space-y-8">
       {/* Month Filter Pills */}
       <div className="flex flex-wrap items-center gap-2">
         {monthKeys.map((mk) => {
@@ -249,12 +253,11 @@ export function ListenersView() {
                   : 'bg-orange-400 text-slate-950';
 
               return (
-                <button
-                  key={entry.user_id}
+                <div key={entry.user_id} className="min-w-0 flex flex-col gap-2"><button
                   type="button"
                   onClick={() => visitProfile(entry.user_id, entry.name)}
                   className={cn(
-                    'group relative flex flex-col justify-between rounded-3xl border p-5 text-left transition hover:-translate-y-0.5 hover:border-[var(--m3-primary)]/60 hover:shadow-lg',
+                    'group relative w-full flex flex-col justify-between rounded-3xl border p-5 text-left transition hover:-translate-y-0.5 hover:border-[var(--m3-primary)]/60 hover:shadow-lg',
                     accentClass
                   )}
                 >
@@ -332,7 +335,7 @@ export function ListenersView() {
                       Kunjungi →
                     </span>
                   </div>
-                </button>
+                </button><div className="px-3 pb-2"><FollowButton targetId={entry.user_id}/></div></div>
               );
             })}
           </div>
@@ -344,9 +347,8 @@ export function ListenersView() {
                 const rank = entry.rank || idx + 4;
                 const isMe = currentUserId === entry.user_id;
                 return (
-                  <button
-                    key={entry.user_id}
-                    type="button"
+                  <div key={entry.user_id} className="min-w-0 flex flex-col gap-2"><button
+                      type="button"
                     onClick={() => visitProfile(entry.user_id, entry.name)}
                     className="group flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition hover:bg-[var(--m3-surface-container-high)]/70"
                   >
@@ -397,7 +399,7 @@ export function ListenersView() {
                     <span className="shrink-0 text-xs font-bold text-[var(--m3-primary)]">
                       Profil →
                     </span>
-                  </button>
+                  </button><div className="px-3 pb-2"><FollowButton targetId={entry.user_id}/></div></div>
                 );
               })}
             </div>
@@ -448,11 +450,10 @@ export function ListenersView() {
             {directory.map((person) => {
               const isMe = currentUserId === person.id;
               return (
-                <button
-                  key={person.id}
+                <div key={person.id} className="min-w-0 flex flex-col gap-2"><button
                   type="button"
                   onClick={() => visitProfile(person.id, person.name)}
-                  className="group flex items-center gap-3.5 rounded-2xl border border-[var(--m3-outline-variant)]/30 bg-[var(--m3-surface-container)] p-3.5 text-left transition hover:border-[var(--m3-primary)]/50 hover:bg-[var(--m3-surface-container-high)]"
+                  className="group flex w-full items-center gap-3.5 rounded-2xl border border-[var(--m3-outline-variant)]/30 bg-[var(--m3-surface-container)] p-3.5 text-left transition hover:border-[var(--m3-primary)]/50 hover:bg-[var(--m3-surface-container-high)]"
                 >
                   <UserAvatarCircle
                     name={person.name}
@@ -489,12 +490,13 @@ export function ListenersView() {
                   </div>
 
                   <Sparkles className="h-4 w-4 shrink-0 text-[var(--m3-on-surface-variant)] opacity-0 transition group-hover:text-[var(--m3-primary)] group-hover:opacity-100" />
-                </button>
+                </button><div className="px-3 pb-2"><FollowButton targetId={person.id}/></div></div>
               );
             })}
           </div>
         )}
       </section>
+      </div>
     </div>
   );
 }

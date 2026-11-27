@@ -22,6 +22,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { BlendLibrarySection } from './BlendLibrarySection';
 import { ArtworkImage } from './ArtworkImage';
 import { useMusic } from './MusicProvider';
 import { StatsView } from './StatsView';
@@ -38,7 +39,7 @@ import {
 import { cn } from '@/lib/utils';
 import { apiUrl } from '@/lib/api/base';
 
-type LibraryTab = 'playlists' | 'liked' | 'history' | 'stats' | 'saved' | 'downloads';
+type LibraryTab = 'playlists' | 'liked' | 'history' | 'stats' | 'saved' | 'downloads' | 'blend';
 type ViewLayout = 'grid' | 'list';
 
 function extractPlaylistId(input: string): string {
@@ -147,11 +148,11 @@ export function LibraryView() {
     return filtered;
   }, [history, localFilter, sortMode]);
 
-  const handleCreatePlaylist = (e: React.FormEvent) => {
+  const handleCreatePlaylist = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPlaylistName.trim()) return;
-    createPlaylist(newPlaylistName.trim());
-    setNewPlaylistName('');
+    const saved = await createPlaylist(newPlaylistName.trim());
+    if (saved) setNewPlaylistName('');
   };
 
   const handleImportYtmPlaylist = async (e: React.FormEvent) => {
@@ -169,12 +170,12 @@ export function LibraryView() {
         tracks?: Parameters<typeof createPlaylist>[2];
       };
       if (data.tracks && data.tracks.length > 0) {
-        createPlaylist(
+        const saved = await createPlaylist(
           data.title || `Imported (${pid.slice(0, 8)})`,
           'Imported from YouTube Music',
           data.tracks
         );
-        setImportInput('');
+        if (saved) setImportInput('');
       } else {
         showToast('No tracks found in that YouTube Music playlist');
       }
@@ -215,6 +216,7 @@ export function LibraryView() {
           {(
             [
               { id: 'playlists', label: 'Playlists', icon: ListMusic },
+              { id: 'blend', label: 'Blend', icon: Shuffle },
               { id: 'liked', label: 'Liked', icon: Heart },
               { id: 'history', label: 'History', icon: Clock },
               { id: 'stats', label: 'Stats', icon: BarChart3 },
@@ -249,12 +251,13 @@ export function LibraryView() {
 
       {/* Stats & Year-in-Music Recap Tab */}
       {tab === 'stats' && <StatsView />}
+      {tab === 'blend' && <BlendLibrarySection />}
 
       {/* Downloads: Lagu Tersimpan Offline */}
       {tab === 'downloads' && <OfflineDownloadsSection />}
 
       {/* Local Filter + Sort + View Toggle Bar (for Playlists / Liked / History / Saved) */}
-      {tab !== 'stats' && (
+      {tab !== 'stats' && tab !== 'blend' && (
         <div className="flex flex-row items-center justify-between gap-2">
           <div className="relative flex-1 min-w-0 sm:max-w-md">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -427,7 +430,7 @@ export function LibraryView() {
                 className="h-10 px-4 rounded-full bg-[var(--m3-primary)] text-[var(--m3-on-primary)] text-xs font-semibold flex items-center gap-1.5 disabled:opacity-40 whitespace-nowrap shrink-0"
               >
                 <Plus className="w-4 h-4" />
-                <span>Create</span>
+                <span>Buat playlist</span>
               </button>
             </form>
 
@@ -500,7 +503,7 @@ export function LibraryView() {
           {filteredPlaylists.length === 0 ? (
             <div className="rounded-[28px] metro-surface p-10 text-center text-sm text-slate-500 dark:text-slate-400">
               {playlists.length === 0
-                ? 'No playlists yet. Create one above to start organizing your tracks.'
+                ? 'Belum ada playlist. Gunakan tombol Buat playlist di atas untuk memulai.'
                 : 'No playlists match your current filter or tag.'}
             </div>
           ) : viewMode === 'grid' ? (
