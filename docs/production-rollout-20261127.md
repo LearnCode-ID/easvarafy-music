@@ -31,3 +31,18 @@ Application deployment is requested from the current Arena branch, not by pushin
 Before release: 78 unit tests, 3 isolated database tests, Next web build and diff checks passed again. Earlier static build and browser-fixture tests also passed (see `follows-blend.md`). No test follows/invites were inserted for real users and no accounts were impersonated to manufacture consent. Two-real-account authentication/Storage and physical Android verification remain outstanding; no new APK is distributed by this web release.
 
 Rollback: retain the private defaults and access controls. Reverting to the old web deployment alone will not restore prior public avatars or profile exposure and may not understand new playlist versions. Prefer a forward fix; review the private snapshot with an authorized database operator before any schema/data restore. Never globally restore the snapshot over newer user edits.
+
+## Release result — completed
+
+- Vercel production deployment **READY / PROMOTED**: `dpl_78hbXcGK1H3RZ1LWb94NyMnH7iqi`.
+- Deployed application commit: `292f990aa334dcb6c16d0455fb54cd9af4bbd493`.
+- Production alias assigned successfully, with no alias error: `https://easvarafy-music.vercel.app`.
+- Immutable deployment URL: `https://easvarafy-music-prmj2zzr1-learn-code1.vercel.app` (Vercel protection may require account access).
+- Final ACL migration remote version: `20261127140809` (`social_rpc_privileges`).
+- Supabase auth/database/REST/Storage all reported healthy after migrations.
+- Production catalog verification: authenticated direct Blend table updates denied; anonymous private RPC execution denied; follow UPDATE and created_at INSERT denied; exactly one actor-UUID `save_blend_mix` signature remains. Original profile base fields and all original likes still match the pre-rollout snapshot; playlist comparison also passed.
+- Read-only production transaction under `anon`: profile DTO returns `private`; raw profiles, likes, stats and playlists expose zero rows; directory/ranking expose zero entries until users opt in; count RPC works with zero followers/following. No real-user mutation/consent was simulated.
+- Public home page retrieved successfully by the page-fetch tool. The same tool could not retrieve `/blend`; the Vercel build manifest confirms `/blend` was built, but this is **not** a live authenticated browser smoke pass. Client-side invitation/login playback and real account/physical APK tests remain explicitly unverified.
+- The release used an explicit production deployment of the current Arena branch commit. `main` was not modified or merged; a future unrelated deployment from the old main branch could overwrite this application release. Reconcile via the normal review/merge workflow before the next main release.
+
+No playlists, likes, accounts, or Storage objects were deleted. No new APK release or background social push delivery was claimed.

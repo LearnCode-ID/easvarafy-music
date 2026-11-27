@@ -1,6 +1,6 @@
 # Follow & two-person Blend (2026-11-27)
 
-> Rollout update: production activation was subsequently approved. Database migrations are now applied; see `production-rollout-20261127.md` for the release status and migration-version mapping. The pre-rollout status below is retained as implementation history.
+> Rollout update: production activation was subsequently approved. Database migrations are now applied and Vercel production is READY/PROMOTED; see `production-rollout-20261127.md` for the release status and migration-version mapping. The pre-rollout status below is retained as implementation history.
 
 ## Deployment status and order
 
