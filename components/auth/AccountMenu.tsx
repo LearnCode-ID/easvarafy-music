@@ -9,6 +9,7 @@ import { VerifiedBadge } from './VerifiedBadge';
 import { useMusic } from '@/components/MusicProvider';
 import { canSeeAdminUi, displayNameOf, initialsOf, publicRoleLabelOf } from '@/lib/auth/types';
 import { cn } from '@/lib/utils';
+import { useBackHandler } from '@/lib/native/backButton';
 
 export function AccountAvatar({ size = 32 }: { size?: number }) {
   const { profile, email } = useAuth();
@@ -173,6 +174,7 @@ function AccountMenuCard({ onNavigate }: { onNavigate?: () => void }) {
 export function MobileAccountButton() {
   const { isAuthenticated, ready } = useAuth();
   const [open, setOpen] = useState(false);
+  useBackHandler(open, () => setOpen(false));
 
   if (!ready) return <span className="w-10 h-10" />;
 
@@ -225,6 +227,7 @@ export function SidebarAccount({ className }: { className?: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  useBackHandler(open, () => setOpen(false));
 
   useEffect(() => {
     if (!open) return;

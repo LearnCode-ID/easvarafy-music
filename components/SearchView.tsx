@@ -39,6 +39,7 @@ import type {
 } from '@/lib/metrolist/types';
 import { cn } from '@/lib/utils';
 import { apiUrl } from '@/lib/api/base';
+import { useBackHandler } from '@/lib/native/backButton';
 
 function formatDuration(seconds: number | null): string {
   if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return '';
@@ -177,6 +178,7 @@ export function SearchView() {
   const [activeTab, setActiveTab] = useState<SearchTab>('all');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  useBackHandler(showSuggestions, () => setShowSuggestions(false));
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

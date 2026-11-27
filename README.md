@@ -116,6 +116,7 @@ Secara fungsional, Easvarafy memadukan mesin rekomendasi, antrean, dan animasi l
   3. **Supabase Realtime + polling** saat aplikasi terbuka atau sedang memutar musik di latar belakang.
   4. **Inbox lonceng** sebagai riwayat.
 - **Popup "Easvarafy versi baru tersedia"** (`components/AppUpdateModal.tsx`, khusus APK): mengecek `GET /api/app/version` saat aplikasi dibuka dan saat kembali ke foreground (maksimal tiap 6 jam). Tombol **Update Sekarang** membuka `https://easvarafy.learncode.web.id` di dalam aplikasi; **Nanti** menunda popup 24 jam untuk versi itu, dan `forceUpdate`/`minVersion` membuat popup tidak bisa ditutup. **Settings → Tentang → Cek Pembaruan** memeriksa secara manual (di web selalu "otomatis terbaru").
+- **Tombol kembali Android** (`lib/native/backButton.ts`, `BackButtonBridge`, callback native di `MainActivity`): menutup layer paling atas lebih dulu (menu/dialog/sheet → tab lirik/antrean → player penuh → halaman detail → tab Beranda → rute sebelumnya). Di Beranda, tombol kembali meminimalkan aplikasi sehingga musik tetap berputar.
 - **Notifikasi "Easvarafy has been updated"** (native, channel `easvarafy_updates_channel`): muncul sekali setelah APK baru dipasang (versionCode berubah).
 - **Versi APK**: CI mengisi `versionCode = github.run_number` dan `versionName = package.json version` (sekarang **1.1.0**). Rilis GitHub bertag `v<version>-build.<run>`, yang otomatis dibaca oleh `/api/app/version`.
 
@@ -458,7 +459,7 @@ npm run clean
 
 Logika inti aplikasi dipisahkan dari komponen UI dan diuji menggunakan test runner bawaan Node (`node:test` + `node:assert/strict`) melalui `tsx`.
 
-Jalankan seluruh rangkaian unit test (60 pengujian):
+Jalankan seluruh rangkaian unit test (65 pengujian):
 
 ```bash
 npx --yes tsx --test \
@@ -469,16 +470,18 @@ npx --yes tsx --test \
   lib/metrolist/offlineQueue.test.ts \
   lib/app/version.test.ts \
   lib/notifications/shared.test.ts \
-  lib/server/fcm.test.ts
+  lib/server/fcm.test.ts \
+  lib/native/backButton.test.ts
 ```
 
-### Cakupan Pengujian (`60/60 Pass`)
+### Cakupan Pengujian (`65/65 Pass`)
 - **`lib/liquid-glass/refraction.test.ts` (5 tes)**: Validasi profil *convex squircle*, profil pembiasan Hukum Snell (`n = 1.0` vs `n = 1.5`), simetri peta perpindahan 2D, peta *specular rim highlight*, serta preset `pill`/`orb`/`droplet`.
 - **`lib/metrolist/logic.test.ts` (9 tes)**: Validasi filter `hideVideoSongs` sebelum slicing *Quick Picks*, deduplikasi `videoId`, *Keep Listening*, *Forgotten Favorites*, *QueueEngine* (*playNext*, *append*, *shuffle pin*, *repeat*, *radio deduplication*), parser LRC, resolver tema AMOLED/Dynamic Color, dan strategi *Background Popup*.
 - **`lib/metrolist/lyricsEngine.test.ts` (5 tes)**: Validasi parsing enhanced word timestamps `<mm:ss.xx>`, global offset, fisika 5 gaya animasi lirik (*Apple*, *Braccato*, *Expressive*, *Simple*, *None*), *progressive blur*, dan generator jalur SVG *Squiggly Seekbar*.
 - **`lib/metrolist/statsEngine.test.ts` (7 tes)**: Validasi filter periode statistik (`7d`, `30d`, `year`, `all`), agregasi menit & porsi artis, pencarian pustaka lokal + tag, pengurutan track, pembangkitan **Auto Top Mixes** (*My Top Mix*, *On Repeat*, *Rediscover*), total durasi, serta helper **Equalizer**.
 - **`lib/metrolist/offlineQueue.test.ts` (14 tes)**: Validasi antrean unduhan (FIFO, dedupe, batas 2 unduhan paralel, retry setelah gagal), progres 0–100%, `formatBytes`, nama file dari MIME, indeks offline (upsert/hapus/serialisasi, data rusak diabaikan), pesan error berbahasa Indonesia, encoding base64 berpotongan, serta resolver sumber audio (`AUDIO_SOURCE_URL_TEMPLATE`, Supabase Storage, deteksi file non-audio).
 - **`lib/app/version.test.ts`**, **`lib/notifications/shared.test.ts`**, **`lib/server/fcm.test.ts` (20 tes)**: Validasi perbandingan versi/build dan keputusan popup update (termasuk wajib update), parser rilis GitHub `v1.1.0-build.57`, validasi payload notifikasi admin (judul/isi/gambar https/target role), resolver deep link tab, merge inbox dan hitung belum dibaca, serta pembentukan pesan FCM v1 (data + gambar + channel) dan parser service account.
+- **`lib/native/backButton.test.ts` (5 tes)**: Validasi tombol kembali Android: layer terakhir ditutup lebih dulu (LIFO), sheet/dialog didahulukan dari navigasi halaman, handler yang gagal tidak mengunci tombol, rute lain kembali ke riwayat atau `/`, dan Beranda tanpa layer terbuka keluar dari aplikasi.
 
 ---
 

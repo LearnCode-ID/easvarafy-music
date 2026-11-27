@@ -23,6 +23,7 @@ import type {
   AodClockStyle,
 } from '@/lib/metrolist/types';
 import { cn } from '@/lib/utils';
+import { useBackHandler } from '@/lib/native/backButton';
 
 const CLOCK_CYCLE: AodClockStyle[] = ['BOLD', 'MINIMAL', 'STACKED'];
 const SHAPE_CYCLE: AodArtworkShape[] = [
@@ -59,6 +60,10 @@ export function AodPlayerOverlay({ open, onClose }: AodPlayerOverlayProps) {
 
   const [now, setNow] = useState<Date>(() => new Date());
   const [touchLocked, setTouchLocked] = useState(false);
+  // Android back closes the AOD, but not while touches are locked.
+  useBackHandler(open, () => {
+    if (!touchLocked) onClose();
+  });
 
   useEffect(() => {
     if (!open) return;

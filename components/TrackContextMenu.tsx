@@ -13,6 +13,7 @@ import {
 import { useMusic } from './MusicProvider';
 import { DownloadMenuItem } from './DownloadButton';
 import type { Track } from '@/lib/metrolist/types';
+import { useBackHandler } from '@/lib/native/backButton';
 
 interface TrackContextMenuProps {
   track: Track;
@@ -30,6 +31,7 @@ export function TrackContextMenu({ track }: TrackContextMenuProps) {
   } = useMusic();
 
   const [open, setOpen] = useState(false);
+  useBackHandler(open, () => setOpen(false));
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {

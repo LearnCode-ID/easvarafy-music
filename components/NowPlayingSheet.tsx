@@ -47,6 +47,7 @@ import { PlayerSlider } from './PlayerSlider';
 import { SyncedLyricsView } from './SyncedLyricsView';
 import { formatDuration } from '@/lib/metrolist/lyrics';
 import { cn } from '@/lib/utils';
+import { useBackHandler } from '@/lib/native/backButton';
 
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
@@ -99,6 +100,12 @@ export function NowPlayingSheet() {
     toggleBackgroundPopup,
     playbackSource,
   } = useMusic();
+
+  // Android back: lyrics/queue -> player view -> close the full player.
+  useBackHandler(isNowPlayingOpen, () => {
+    if (nowPlayingTab !== 'player') setNowPlayingTab('player');
+    else setIsNowPlayingOpen(false);
+  });
 
   const [aodOpen, setAodOpen] = useState(false);
   const [shareLyricsOpen, setShareLyricsOpen] = useState(false);

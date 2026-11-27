@@ -20,6 +20,7 @@ import {
 } from '@/lib/metrolist/statsEngine';
 import type { EqualizerPreset } from '@/lib/metrolist/types';
 import { cn } from '@/lib/utils';
+import { useBackHandler } from '@/lib/native/backButton';
 
 const PRESET_KEYS = Object.keys(EQUALIZER_PRESETS) as Array<
   Exclude<EqualizerPreset, 'CUSTOM'>
@@ -33,6 +34,7 @@ export function EqualizerSheet({
   onClose: () => void;
 }) {
   const { settings, updateSettings, showToast } = useMusic();
+  useBackHandler(open, onClose);
 
   const bands =
     Array.isArray(settings.equalizerBands) && settings.equalizerBands.length === 5
@@ -281,6 +283,7 @@ export function SleepTimerSheet({
     sleepTimerEndOfTrack,
     setSleepTimerEndOfTrack,
   } = useMusic();
+  useBackHandler(open, onClose);
 
   const [customMinutes, setCustomMinutes] = useState<number>(
     sleepTimerMinutes ?? 25

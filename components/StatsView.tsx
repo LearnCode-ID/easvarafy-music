@@ -19,6 +19,7 @@ import {
   type StatsPeriod,
 } from '@/lib/metrolist/statsEngine';
 import { cn } from '@/lib/utils';
+import { useBackHandler } from '@/lib/native/backButton';
 
 const PERIODS: Array<{ id: StatsPeriod; label: string }> = [
   { id: 'week', label: '7 Days' },
@@ -43,6 +44,7 @@ export function StatsView() {
   const [period, setPeriod] = useState<StatsPeriod>('all');
   const [recapOpen, setRecapOpen] = useState(false);
   const [recapSlide, setRecapSlide] = useState(0);
+  useBackHandler(recapOpen, () => setRecapOpen(false));
 
   const stats = useMemo(
     () =>

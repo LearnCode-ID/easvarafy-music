@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { useBackHandler } from '@/lib/native/backButton';
 
 export function StatCard({
   label,
@@ -88,6 +89,10 @@ export function ConfirmDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  // Android back = Batal (but never while the action is running).
+  useBackHandler(open, () => {
+    if (!loading) onCancel();
+  });
   if (!open) return null;
   return (
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-[130] flex items-center justify-center p-4">

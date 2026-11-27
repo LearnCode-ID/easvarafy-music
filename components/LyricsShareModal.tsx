@@ -6,6 +6,7 @@ import { Check, Copy, Download, Sparkles, X } from 'lucide-react';
 import { ArtworkImage } from './ArtworkImage';
 import { useMusic } from './MusicProvider';
 import { cn } from '@/lib/utils';
+import { useBackHandler } from '@/lib/native/backButton';
 
 type CardAspect = '1:1' | '4:5' | '9:16';
 type CardTheme = 'artwork' | 'gradient' | 'dark' | 'paper' | 'glass';
@@ -100,6 +101,7 @@ interface LyricsShareModalProps {
 
 export function LyricsShareModal({ open, onClose }: LyricsShareModalProps) {
   const { currentTrack, lyrics, showToast } = useMusic();
+  useBackHandler(open, onClose);
 
   const availableLines = useMemo(() => {
     if (lyrics?.lines && lyrics.lines.length > 0) {

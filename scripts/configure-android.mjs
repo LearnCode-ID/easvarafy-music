@@ -379,6 +379,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import androidx.activity.OnBackPressedCallback;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
@@ -418,6 +419,68 @@ public class MainActivity extends BridgeActivity {
         }
         showNativeGifSplash();
         setupOfflineSupport();
+        setupBackButton();
+    }
+
+    // ------------------------------------------------------------------
+    // Back button
+    // ------------------------------------------------------------------
+    // The web app is a single-page app (tabs, detail pages and sheets are not
+    // browser history), so Capacitor's default "goBack() if canGoBack()" did
+    // nothing. Registered after super.onCreate(), this callback runs before the
+    // App plugin's: it asks the page to close its topmost layer
+    // (window.__easvarafyHandleBack, lib/native/backButton.ts) and otherwise
+    // moves the app to the background so music keeps playing.
+
+    private final Handler backHandler = new Handler(Looper.getMainLooper());
+    private boolean backPending = false;
+
+    private void setupBackButton() {
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                handleBackPressed();
+            }
+        });
+    }
+
+    private void handleBackPressed() {
+        WebView webView = this.bridge != null ? this.bridge.getWebView() : null;
+        if (offlineOverlayVisible || webView == null) {
+            moveTaskToBack(true);
+            return;
+        }
+        if (backPending) return;
+        backPending = true;
+        final boolean canGoBack = webView.canGoBack();
+        // A hung renderer must never trap the user on this screen.
+        final Runnable watchdog = () -> {
+            if (!backPending) return;
+            backPending = false;
+            moveTaskToBack(true);
+        };
+        backHandler.postDelayed(watchdog, 1500L);
+        String js = "(function(){try{if(typeof window.__easvarafyHandleBack!=='function')return 'none';"
+            + "return window.__easvarafyHandleBack(" + canGoBack + ")?'handled':'exit';}catch(e){return 'none';}})()";
+        try {
+            webView.evaluateJavascript(js, value -> {
+                if (!backPending) return; // watchdog already acted
+                backPending = false;
+                backHandler.removeCallbacks(watchdog);
+                if (value != null && value.contains("handled")) return;
+                if (value != null && value.contains("none") && canGoBack) {
+                    // Page without the handler (loading, offline page, old web build).
+                    webView.goBack();
+                    return;
+                }
+                moveTaskToBack(true);
+            });
+        } catch (Exception e) {
+            backPending = false;
+            backHandler.removeCallbacks(watchdog);
+            if (canGoBack) webView.goBack();
+            else moveTaskToBack(true);
+        }
     }
 
     // ------------------------------------------------------------------

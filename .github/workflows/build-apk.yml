@@ -58,7 +58,8 @@ jobs:
             lib/metrolist/offlineQueue.test.ts \
             lib/app/version.test.ts \
             lib/notifications/shared.test.ts \
-            lib/server/fcm.test.ts
+            lib/server/fcm.test.ts \
+            lib/native/backButton.test.ts
 
       - name: Build web (static export)
         run: npm run build:static

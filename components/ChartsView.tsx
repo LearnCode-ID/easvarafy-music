@@ -20,6 +20,7 @@ import { SEED_TRACKS } from '@/lib/metrolist/seed';
 import type { AlbumSummary, HomeShelfItem, Track } from '@/lib/metrolist/types';
 import { cn } from '@/lib/utils';
 import { apiUrl } from '@/lib/api/base';
+import { BACK_PRIORITY_PAGE, useBackHandler } from '@/lib/native/backButton';
 
 const CHART_QUERIES = [
   { id: 'top-songs', label: 'Top Songs', query: 'top music charts hits 2026', type: 'songs' },
@@ -57,6 +58,8 @@ export function ChartsView() {
   const { settings, playTrack, currentTrack, openDetail } = useMusic();
   const [activeChart, setActiveChart] = useState(CHART_QUERIES[0].id);
   const [activeMood, setActiveMood] = useState<MoodTile | null>(null);
+  // Android back leaves an opened mood before switching tabs.
+  useBackHandler(!!activeMood, () => setActiveMood(null), BACK_PRIORITY_PAGE);
   const [items, setItems] = useState<HomeShelfItem[]>([]);
   const [newReleases, setNewReleases] = useState<AlbumSummary[]>([]);
   const [loading, setLoading] = useState(true);

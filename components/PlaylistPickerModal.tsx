@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Check, ListMusic, Plus, X } from 'lucide-react';
 import { useMusic } from './MusicProvider';
+import { useBackHandler } from '@/lib/native/backButton';
 
 export function PlaylistPickerModal() {
   const {
@@ -14,6 +15,7 @@ export function PlaylistPickerModal() {
   } = useMusic();
 
   const [newName, setNewName] = useState('');
+  useBackHandler(!!playlistPickerTrack, () => openPlaylistPicker(null));
 
   if (!playlistPickerTrack) return null;
 
