@@ -277,7 +277,7 @@ function ProfileViewContent({ userId }: { userId: string }) {
           </div>
         </div>
       </section>
-      <ProfileSocialControls targetId={userId} />
+      <ProfileSocialControls targetId={userId} visibleRole={data.role} />
       {data.stats && (
         <section className="m3-card p-5 grid grid-cols-2 gap-4 text-center">
           <div>

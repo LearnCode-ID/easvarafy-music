@@ -16,6 +16,8 @@ import {
   type FollowStatus,
 } from "@/lib/social/follows";
 import { createBlendInvite } from "@/lib/social/blendClient";
+import type { UserRole } from "@/lib/auth/types";
+import { followerDisplay } from "@/lib/social/followerDisplay";
 import { useBackHandler } from "@/lib/native/backButton";
 
 export function FollowButton({ targetId }: { targetId: string }) {
@@ -136,20 +138,23 @@ function FollowButtonContent({ targetId }: { targetId: string }) {
     </div>
   );
 }
-export function ProfileSocialControls({ targetId }: { targetId: string }) {
+type ProfileSocialProps = { targetId: string; visibleRole?: UserRole };
+export function ProfileSocialControls({ targetId, visibleRole }: ProfileSocialProps) {
   const auth = useAuth();
   return (
     <ProfileSocialContent
       key={`${auth.userId}:${targetId}`}
       targetId={targetId}
+      visibleRole={visibleRole}
     />
   );
 }
-function ProfileSocialContent({ targetId }: { targetId: string }) {
+function ProfileSocialContent({ targetId, visibleRole }: ProfileSocialProps) {
   const { userId } = useAuth();
   const { openDetail } = useMusic();
   const router = useRouter();
   const [status, setStatus] = useState<FollowStatus | null>(null);
+  const followers = followerDisplay(status?.followers_count, visibleRole);
   const [error, setError] = useState("");
   const [list, setList] = useState<"followers" | "following" | null>(null);
   const [confirm, setConfirm] = useState(false);
@@ -195,8 +200,8 @@ function ProfileSocialContent({ targetId }: { targetId: string }) {
   return (
     <section className="space-y-3" aria-label="Sosial profil">
       <div className="flex flex-wrap items-center gap-3">
-        <button className="profile-button" onClick={() => setList("followers")}>
-          {status?.followers_count ?? "…"} Followers
+        <button className="profile-button" title={followers.note} onClick={() => setList("followers")}>
+          {followers.label} Followers
         </button>
         <button className="profile-button" onClick={() => setList("following")}>
           {status?.following_count ?? "…"} Following
