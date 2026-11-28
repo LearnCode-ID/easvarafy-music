@@ -392,6 +392,38 @@ try {
         `${name} restored outside popup`
       );
     }
+    await detail
+      .getByRole("button", { name: "Opsi playlist", exact: true })
+      .click();
+    for (const name of [
+      "Acak playlist",
+      "Bagikan playlist",
+      "Unduh playlist",
+      "Cari di playlist",
+    ]) {
+      assert.equal(
+        await popup.getByRole("button", { name, exact: true }).count(),
+        0,
+        `${name} must not be duplicated in the three-dot popup`
+      );
+      assert.equal(
+        await page.getByRole("button", { name, exact: true }).count(),
+        1,
+        `${name} has exactly one entry point`
+      );
+    }
+    const menuActions = await popup.locator("button").allTextContents();
+    assert.deepEqual(
+      menuActions.map((name) => name.trim()).filter(Boolean),
+      [
+        "Tambahkan lagu",
+        "Edit lagu & urutan",
+        "Edit nama & detail",
+        "Urutkan lagu",
+      ],
+      "owner menu contains only remaining playlist actions"
+    );
+    await closePopup();
     assert.equal(
       await page.getByTestId("youtube-stage").getAttribute("data-persistent"),
       "yes",
@@ -566,7 +598,9 @@ try {
     await popup
       .getByRole("button", { name: "Urutan saya", exact: true })
       .click();
-    await openAction("Cari di playlist");
+    await detail
+      .getByRole("button", { name: "Cari di playlist", exact: true })
+      .click();
     await popup
       .getByRole("textbox", { name: "Filter playlist tracks" })
       .fill("Alpha");
@@ -574,7 +608,9 @@ try {
       .getByRole("button", { name: "Tampilkan hasil", exact: true })
       .click();
     assert.deepEqual(await ids(), ["playlist-a", "playlist-c"]);
-    await openAction("Cari di playlist");
+    await detail
+      .getByRole("button", { name: "Cari di playlist", exact: true })
+      .click();
     await popup
       .getByRole("button", { name: "Hapus pencarian", exact: true })
       .click();
@@ -585,15 +621,18 @@ try {
     await page
       .getByRole("button", { name: "Open Now Playing for Alpha", exact: true })
       .waitFor();
-    await openAction("Acak playlist");
+    await detail
+      .getByRole("button", { name: "Acak playlist", exact: true })
+      .click();
     assert.equal(
-      await popup
+      await detail
         .getByRole("button", { name: "Acak playlist", exact: true })
         .getAttribute("aria-pressed"),
       "true"
     );
-    await closePopup();
-    await openAction("Bagikan playlist");
+    await detail
+      .getByRole("button", { name: "Bagikan playlist", exact: true })
+      .click();
     const shared = await page.evaluate(() => window.__shared);
     assert.deepEqual(
       Object.keys(shared),
@@ -605,7 +644,6 @@ try {
       await page.evaluate(() => window.__shared.url),
       /https:\/\/.*\/playlist\/owned-list$/
     );
-    await closePopup();
     await page.evaluate(() => {
       window.__nativeShare = navigator.share;
       Object.defineProperty(navigator, "share", {
@@ -694,7 +732,9 @@ try {
     await popup
       .getByRole("button", { name: "Tutup pengaturan playlist", exact: true })
       .click();
-    await openAction("Unduh playlist");
+    await detail
+      .getByRole("button", { name: "Unduh playlist", exact: true })
+      .click();
     await popup
       .getByRole("button", { name: "Unduh 4 lagu", exact: true })
       .waitFor();
