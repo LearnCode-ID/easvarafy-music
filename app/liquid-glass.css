@@ -73,7 +73,8 @@
 .glass-topbar { background: var(--glass-tint) !important; border-bottom: 1px solid var(--glass-hairline); backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)); }
 .glass-nav { border-radius: var(--glass-pill); overflow: hidden; }
 .glass-nav [aria-current="page"], .glass-sidebar [aria-current="page"] {
-  background: var(--glass-control); border-radius: var(--glass-pill); box-shadow: var(--glass-specular), 0 2px 8px rgb(0 0 0 / .06);
+  background: var(--m3-primary-container); color: var(--m3-on-primary-container);
+  border-radius: var(--glass-pill); box-shadow: var(--glass-specular), 0 2px 8px rgb(0 0 0 / .06);
 }
 .glass-sidebar { border-radius: var(--glass-radius); }
 .glass-content { animation: glass-enter .38s var(--glass-spring) both; }
@@ -86,8 +87,10 @@
   border: 1px solid var(--glass-hairline); box-shadow: var(--glass-specular);
 }
 .glass-player-controls button { border-radius: var(--glass-pill); }
+/* Glass is the surrounding material, not a replacement for action colors. */
 .glass-player-controls button[aria-label="Play"], .glass-player-controls button[aria-label="Pause"] {
-  background: var(--glass-tint); color: var(--glass-ink); border: 1px solid var(--glass-edge); box-shadow: var(--glass-specular), var(--glass-shadow);
+  background: var(--m3-primary); color: var(--m3-on-primary);
+  border: 1px solid var(--glass-edge); box-shadow: var(--glass-specular), var(--glass-shadow);
 }
 .glass-app [data-testid="detail-view"] > section { border-radius: 32px; }
 .glass-app [data-testid="detail-view"] :is(tr, [role="row"]) { border-bottom: 1px solid var(--glass-hairline); }

@@ -24,6 +24,10 @@ The shared material is scoped to the music application and auth shell, not the o
 4. Spring full-screen player opening/closing; rounded artwork with palette glow, glass progress/volume/transport groups. Fixed top-clipped artwork when the short/narrow viewport needs scrolling. Native range controls and their keyboard/seek semantics remain intact.
 5. Lightweight transparent Home/playlist cards, concentric song rows, hairlines and consistent typography. The restored **large Easvarafy editorial collage covers** are deliberately untouched; ranked song grouping and queues are unchanged. Auth uses the shared glass material and a restrained static mesh wash.
 
+## Keep the original action colors
+
+Follow-up visual correction: glass applies to the surrounding material, not to semantic action colors. Full-player Play/Pause uses `--m3-primary` / `--m3-on-primary` again, in both Classic and Expressive modes. Active default navigation/sidebar uses `--m3-primary-container` / `--m3-on-primary-container`. Existing slider, volume and selected-state accents are preserved; artwork ambient, floating geometry and blur are unchanged. Browser assertions verify the actual computed action colors in light/dark themes, including fixed emerald/violet presets.
+
 ## Actual artwork colors and fallbacks
 
 `ArtworkAmbient` samples a 32×32 canvas only on artwork URL changes, anonymously and without credentials. Quantized dominant clusters produce up to three actual RGB colors; near-black letterboxes and transparent pixels are ignored. Cache is bounded to 32 palettes. No per-frame sampling, color library, artwork proxy, or guessed artist/track-ID color is used for the ambient palette.
