@@ -6,6 +6,7 @@ import { AppUpdateModal } from '@/components/AppUpdateModal';
 import { NotificationBootstrap } from '@/components/notifications/NotificationBootstrap';
 import { BackButtonBridge } from '@/components/native/BackButtonBridge';
 import './globals.css';
+import './liquid-glass.css';
 
 const plusJakarta = localFont({
   src: '../public/fonts/plus-jakarta-sans-latin.woff2',

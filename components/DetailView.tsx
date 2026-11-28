@@ -164,7 +164,7 @@ export function DetailView() {
     return (
       <div data-testid="detail-view" className="space-y-6 pb-36">
         {/* Immersive Adaptive Artwork Hero Banner */}
-        <section className="relative overflow-hidden rounded-[32px] metro-surface p-5 sm:p-7">
+        <section className="glass-playlist-hero relative overflow-hidden rounded-[32px] metro-surface p-5 sm:p-7">
           {cover && (
             <>
               <img
@@ -389,7 +389,7 @@ export function DetailView() {
             No tracks match &ldquo;{trackFilter}&rdquo;.
           </div>
         ) : (
-          <div className="rounded-[28px] metro-surface divide-y divide-black/5 dark:divide-white/[0.06]">
+          <div className="glass-song-list rounded-[28px] metro-surface divide-y divide-black/5 dark:divide-white/[0.06]">
             {filteredTracks.map((track, idx) => {
               const active = currentTrack?.videoId === track.videoId;
               return (
@@ -498,7 +498,7 @@ export function DetailView() {
       ) : remote ? (
         <>
           {/* Immersive Adaptive Blurred Artwork Hero */}
-          <section className="relative overflow-hidden rounded-[32px] metro-surface p-5 sm:p-7">
+          <section className="glass-playlist-hero relative overflow-hidden rounded-[32px] metro-surface p-5 sm:p-7">
             {thumb && (
               <>
                 <img
@@ -639,7 +639,7 @@ export function DetailView() {
 
           {/* Tracks */}
           {filteredTracks.length > 0 && (
-            <div className="rounded-[28px] metro-surface divide-y divide-black/5 dark:divide-white/[0.06]">
+            <div className="glass-song-list rounded-[28px] metro-surface divide-y divide-black/5 dark:divide-white/[0.06]">
               {filteredTracks.map((track, idx) => {
                 const active = currentTrack?.videoId === track.videoId;
                 return (

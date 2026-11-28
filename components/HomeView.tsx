@@ -1,5 +1,6 @@
 "use client";
 
+import { TopPicksCollageSection } from "./HomeEditorialSections";
 import { PersonalizationSettings } from "./PersonalizationSettings";
 import React, {
   useCallback,
@@ -404,7 +405,9 @@ export function HomeView() {
     currentTrack,
     [...verifiedHistory.map((e) => e.track), ...allowedLikes]
   );
-  const quickPicks = homeRecommendations.rows.map((r) => r.track);
+  const homeTracks = homeRecommendations.rows.map((r) => r.track);
+  const featuredTracks = homeTracks.slice(0, 12);
+  const quickPicks = homeTracks.slice(12, 24);
 
   const keepListening = useMemo(
     () =>
@@ -422,7 +425,7 @@ export function HomeView() {
       }).filter(
         (t) =>
           !speedDial.some((s) => trackKey(s) === trackKey(t)) &&
-          !quickPicks.some((s) => trackKey(s) === trackKey(t)) &&
+          !homeTracks.some((s) => trackKey(s) === trackKey(t)) &&
           !homeRecommendations.because.some(
             (r) => trackKey(r.track) === trackKey(t)
           )
@@ -432,7 +435,7 @@ export function HomeView() {
       settings,
       personalization.state,
       speedDial,
-      quickPicks,
+      homeTracks,
       homeRecommendations.because,
     ]
   );
@@ -456,7 +459,7 @@ export function HomeView() {
           ![
             ...speedDial,
             ...keepListening,
-            ...quickPicks,
+            ...homeTracks,
             ...homeRecommendations.because.map((r) => r.track),
           ].some((s) => trackKey(s) === trackKey(t))
       ),
@@ -467,7 +470,7 @@ export function HomeView() {
       personalization.state,
       speedDial,
       keepListening,
-      quickPicks,
+      homeTracks,
       homeRecommendations.because,
     ]
   );
@@ -508,7 +511,7 @@ export function HomeView() {
           .filter(
             (t) =>
               ![
-                ...quickPicks,
+                ...homeTracks,
                 ...homeRecommendations.because.map((r) => r.track),
                 ...speedDial,
                 ...keepListening,
@@ -521,7 +524,7 @@ export function HomeView() {
       ),
     [
       activeGenreTracks,
-      quickPicks,
+      homeTracks,
       homeRecommendations.because,
       speedDial,
       keepListening,
@@ -533,7 +536,7 @@ export function HomeView() {
   const displayShelves = useMemo(() => {
     const seen = new Set(
       [
-        ...quickPicks,
+        ...homeTracks,
         ...homeRecommendations.because.map((r) => r.track),
         ...speedDial,
         ...keepListening,
@@ -561,7 +564,7 @@ export function HomeView() {
       .filter((shelf) => shelf.items.length);
   }, [
     homeData,
-    quickPicks,
+    homeTracks,
     homeRecommendations.because,
     speedDial,
     keepListening,
@@ -621,7 +624,7 @@ export function HomeView() {
     settings.hideVideoSongs
   );
   return (
-    <div className="space-y-8 pb-8">
+    <div className="glass-home space-y-8 pb-8">
       {/* Top Greeting Header & Mood Chips */}
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-3">
@@ -630,7 +633,7 @@ export function HomeView() {
               {greeting}
             </h1>
             <p className="text-[13px] opacity-60 mt-0.5 truncate">
-              Curated mixes & live YouTube Music picks
+              Musik pilihan, untuk setiap sisi harimu.
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -709,7 +712,7 @@ export function HomeView() {
           {moodLoading ? (
             <QuickPicksSkeleton />
           ) : visibleMoodTracks && visibleMoodTracks.length > 0 ? (
-            <div className="rounded-3xl metro-surface divide-y divide-black/5 dark:divide-white/[0.06]">
+            <div className="glass-song-list rounded-3xl metro-surface divide-y divide-black/5 dark:divide-white/[0.06]">
               {visibleMoodTracks.slice(0, 10).map((track, idx) => {
                 const active = currentTrack?.videoId === track.videoId;
                 return (
@@ -758,6 +761,13 @@ export function HomeView() {
       {/* Main Personalized Home Sections */}
       {selectedMood === "all" && (
         <>
+          <TopPicksCollageSection
+            tracks={featuredTracks}
+            loading={homeRecommendations.loading}
+            personal={homeRecommendations.personal}
+            onPlayMix={(lead, queue) => playTrack(lead, queue)}
+          />
+
           {/* 1. Editorial Featured Spotlight Banner (Distinct visual anchor) */}
           {spotlightTrack && (
             <section
@@ -819,112 +829,116 @@ export function HomeView() {
             </section>
           )}
 
-          {/* 4. Quick Picks (Metrolist Multi-Column 4-Row Grouped Cards) */}
-          <section className="space-y-3 cv-auto">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider opacity-55">
-                  {homeRecommendations.personal
-                    ? "Berdasarkan preferensi mendengarkanmu"
-                    : "Katalog YouTube Music · sesuai wilayah pilihan"}
-                </p>
-                <h2 className="text-[19px] font-bold tracking-tight">
-                  {homeRecommendations.personal
-                    ? "Pilihan untukmu"
-                    : "Jelajahi musik"}
-                </h2>
-              </div>
-              {quickPicks.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => playTrack(quickPicks[0], quickPicks)}
-                  className="inline-flex items-center gap-1.5 px-3.5 h-8 rounded-full metro-surface text-[12px] font-semibold hover:brightness-110 transition-all"
-                >
-                  <Play className="w-3.5 h-3.5 fill-current text-[var(--m3-primary)]" />
-                  Play all
-                </button>
-              )}
-            </div>
-
-            {homeRecommendations.loading && quickPicks.length === 0 ? (
-              <QuickPicksSkeleton />
-            ) : (
-              <div className="space-y-3">
-                {!quickPicks.length && (
-                  <p role="status" className="text-sm opacity-65">
-                    {homeRecommendations.error
-                      ? "Katalog belum dapat dimuat."
-                      : "Belum ada kandidat yang sesuai. Putar beberapa lagu atau ubah filter."}
+          {/* Compact discoveries are distinct from the large editorial covers. */}
+          {(quickPicks.length > 0 ||
+            (!featuredTracks.length && !homeRecommendations.loading)) && (
+            <section className="space-y-3 cv-auto">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider opacity-55">
+                    {homeRecommendations.personal
+                      ? "Berdasarkan preferensi mendengarkanmu"
+                      : "Temukan lagu berikutnya yang kamu suka"}
                   </p>
-                )}
-                {homeRecommendations.error && (
+                  <h2 className="text-[19px] font-bold tracking-tight">
+                    {homeRecommendations.personal
+                      ? "Pilihan untukmu"
+                      : "Jelajahi musik"}
+                  </h2>
+                </div>
+                {quickPicks.length > 0 && (
                   <button
                     type="button"
-                    onClick={homeRecommendations.retry}
-                    className="metro-surface rounded-full px-4 py-2 text-sm"
+                    onClick={() => playTrack(quickPicks[0], quickPicks)}
+                    className="inline-flex items-center gap-1.5 px-3.5 h-8 rounded-full metro-surface text-[12px] font-semibold hover:brightness-110 transition-all"
                   >
-                    Coba lagi rekomendasi
+                    <Play className="w-3.5 h-3.5 fill-current text-[var(--m3-primary)]" />
+                    Play all
                   </button>
                 )}
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                  {quickPickColumns.map((col, colIdx) => (
-                    <div
-                      key={`qp-col-${colIdx}`}
-                      className="rounded-3xl metro-surface p-2 space-y-0.5"
-                    >
-                      {col.map((track) => {
-                        const active = currentTrack?.videoId === track.videoId;
-                        return (
-                          <div
-                            key={`qp-${track.videoId}`}
-                            className={`group flex items-center gap-3 p-2 rounded-2xl transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06] ${
-                              active ? "bg-[var(--m3-primary)]/[0.12]" : ""
-                            }`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => playTrack(track)}
-                              className="flex items-center gap-3 flex-1 min-w-0 text-left"
-                            >
-                              <div className="relative w-12 h-12 rounded-xl overflow-hidden shrink-0">
-                                <ArtworkImage
-                                  src={track.thumbnail}
-                                  alt={track.title}
-                                  className="w-full h-full"
-                                />
-                                <div
-                                  className={`absolute inset-0 bg-black/45 flex items-center justify-center transition-opacity ${
-                                    active
-                                      ? "opacity-100"
-                                      : "opacity-0 group-hover:opacity-100"
-                                  }`}
-                                >
-                                  <Play className="w-4 h-4 text-white fill-current" />
-                                </div>
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <p
-                                  className={`text-[13.5px] font-semibold truncate ${
-                                    active ? "text-[var(--m3-primary)]" : ""
-                                  }`}
-                                >
-                                  {track.title}
-                                </p>
-                                <p className="text-[12px] opacity-60 truncate">
-                                  {track.artist}
-                                </p>
-                              </div>
-                            </button>
-                            <TrackContextMenu track={track} />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
               </div>
-            )}
-          </section>
+
+              {homeRecommendations.loading && quickPicks.length === 0 ? (
+                <QuickPicksSkeleton />
+              ) : (
+                <div className="space-y-3">
+                  {!quickPicks.length && (
+                    <p role="status" className="text-sm opacity-65">
+                      {homeRecommendations.error
+                        ? "Katalog belum dapat dimuat."
+                        : "Belum ada kandidat yang sesuai. Putar beberapa lagu atau ubah filter."}
+                    </p>
+                  )}
+                  {homeRecommendations.error && (
+                    <button
+                      type="button"
+                      onClick={homeRecommendations.retry}
+                      className="metro-surface rounded-full px-4 py-2 text-sm"
+                    >
+                      Coba lagi rekomendasi
+                    </button>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {quickPickColumns.map((col, colIdx) => (
+                      <div
+                        key={`qp-col-${colIdx}`}
+                        className="rounded-3xl metro-surface p-2 space-y-0.5"
+                      >
+                        {col.map((track) => {
+                          const active =
+                            currentTrack?.videoId === track.videoId;
+                          return (
+                            <div
+                              key={`qp-${track.videoId}`}
+                              className={`group flex items-center gap-3 p-2 rounded-2xl transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06] ${
+                                active ? "bg-[var(--m3-primary)]/[0.12]" : ""
+                              }`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => playTrack(track)}
+                                className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                              >
+                                <div className="relative w-12 h-12 rounded-xl overflow-hidden shrink-0">
+                                  <ArtworkImage
+                                    src={track.thumbnail}
+                                    alt={track.title}
+                                    className="w-full h-full"
+                                  />
+                                  <div
+                                    className={`absolute inset-0 bg-black/45 flex items-center justify-center transition-opacity ${
+                                      active
+                                        ? "opacity-100"
+                                        : "opacity-0 group-hover:opacity-100"
+                                    }`}
+                                  >
+                                    <Play className="w-4 h-4 text-white fill-current" />
+                                  </div>
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p
+                                    className={`text-[13.5px] font-semibold truncate ${
+                                      active ? "text-[var(--m3-primary)]" : ""
+                                    }`}
+                                  >
+                                    {track.title}
+                                  </p>
+                                  <p className="text-[12px] opacity-60 truncate">
+                                    {track.artist}
+                                  </p>
+                                </div>
+                              </button>
+                              <TrackContextMenu track={track} />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
 
           {/* 5. Keep Listening (Editorial Feature Cards) */}
           {homeRecommendations.because.length > 0 && (

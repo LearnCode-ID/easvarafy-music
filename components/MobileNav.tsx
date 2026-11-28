@@ -56,7 +56,7 @@ export function MobileTopBar() {
   const { setActiveTab, activeTab, openDetail } = useMusic();
 
   return (
-    <header className="lg:hidden sticky top-0 z-30 h-[calc(52px+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] px-3 flex items-center justify-between bg-[var(--m3-bg)]/95 border-b border-[var(--m3-border)]">
+    <header className="glass-topbar lg:hidden sticky top-0 z-30 h-[calc(52px+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] px-3 flex items-center justify-between bg-[var(--m3-bg)]/95 border-b border-[var(--m3-border)]">
       <div className="flex items-center gap-1 shrink-0">
         <button
           type="button"
@@ -336,19 +336,19 @@ export function MobileBottomTabs() {
   };
 
   /* ============================================================================
-   * MODE 1: DEFAULT LIGHTWEIGHT NAVIGATION BAR (Zero backdrop-filter, ideal for older Android)
+   * MODE 1: DEFAULT CSS GLASS DOCK (no SVG displacement maps)
    * ============================================================================ */
   if (!isLiquidGlass) {
     return (
       <div
         data-testid="mobile-default-dock"
         data-dock-style="default"
-        className="lg:hidden fixed inset-x-0 bottom-0 z-40"
+        className="lg:hidden fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-40"
       >
-        {/* Lightweight Solid MiniPlayer Strip above bottom nav */}
+        {/* Floating CSS glass MiniPlayer above the navigation capsule */}
         {currentTrack && (
-          <div className="px-2.5 pb-2">
-            <div className="relative max-w-md mx-auto h-[56px] rounded-[18px] metro-surface shadow-lg px-2.5 flex items-center gap-2.5 overflow-hidden">
+          <div className="pb-2.5">
+            <div className="relative max-w-md mx-auto h-[56px] glass-mini glass-surface px-2.5 flex items-center gap-2.5 overflow-hidden">
               <div className="pointer-events-none absolute inset-x-3 bottom-0 h-[2px] bg-black/5 dark:bg-white/10 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-[var(--m3-primary)] transition-[width] duration-200"
@@ -424,10 +424,10 @@ export function MobileBottomTabs() {
           </div>
         )}
 
-        {/* Solid Material 3 Bottom Navigation Bar */}
+        {/* Floating CSS glass navigation capsule */}
         <nav
           aria-label="Mobile navigation"
-          className="bg-[var(--m3-surface)] border-t border-[var(--m3-border)] pb-[env(safe-area-inset-bottom)]"
+          className="glass-nav glass-surface max-w-md mx-auto"
         >
           <div className="max-w-md mx-auto h-[64px] grid grid-cols-5 items-center px-2">
             {MOBILE_TABS.map((tab) => {

@@ -61,7 +61,7 @@ test("cold guest uses only supplied real catalogue and returns honest empty", ()
   ];
   const rows = rankCandidates(pool, emptyTaste());
   assert.equal(rows.length, 2);
-  assert.match(rows[0].reason, /katalog YouTube Music/);
+  assert.match(rows[0].reason, /katalog/);
   assert.deepEqual(rows, rankCandidates(pool, emptyTaste()));
 });
 test("provider IDs, incomplete metadata, unavailable, videos and fully filtered candidates", () => {

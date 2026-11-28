@@ -1,5 +1,6 @@
 'use client';
 
+import { buildEditorialCards } from '@/lib/recommendation/editorial';
 import React, { useMemo } from 'react';
 import { ChevronRight, Music2, Play, Plus } from 'lucide-react';
 import { ArtworkImage } from './ArtworkImage';
@@ -41,59 +42,58 @@ function dedupeTracksById(tracks: Track[]): Track[] {
 export function TopPicksCollageSection({
   tracks,
   onPlayMix,
+  loading = false,
+  personal = false,
 }: {
   tracks: Track[];
   onPlayMix: (lead: Track, queue: Track[]) => void;
+  loading?: boolean;
+  personal?: boolean;
 }) {
-  const collageCards = useMemo(() => {
-    const unique = dedupeTracksById(tracks);
-    if (unique.length === 0) return [];
+  const collageCards = useMemo(
+    () =>
+      buildEditorialCards(tracks).map((card, index) => ({
+        ...card,
+        palette: COLLAGE_PALETTES[index % COLLAGE_PALETTES.length],
+      })),
+    [tracks]
+  );
 
-    // Group distinct lead artists so every tall poster features a fresh headliner
-    const seenArtists = new Set<string>();
-    const leads: Track[] = [];
-    for (const track of unique) {
-      const primaryArtist = (track.artists?.[0]?.name || track.artist || 'Easvarafy')
-        .split(/[,&]|feat\.|ft\./i)[0]
-        .trim();
-      const key = primaryArtist.toLowerCase();
-      if (!key || seenArtists.has(key)) continue;
-      seenArtists.add(key);
-      leads.push(track);
-      if (leads.length >= 6) break;
-    }
-
-    if (leads.length === 0) return [];
-
-    return leads.map((lead, idx) => {
-      const primaryArtist = (lead.artists?.[0]?.name || lead.artist || 'Easvarafy')
-        .split(/[,&]|feat\.|ft\./i)[0]
-        .trim();
-      const others = unique.filter((t) => t.videoId !== lead.videoId);
-      const circle2 = others[(idx * 2) % Math.max(1, others.length)] || lead;
-      const circle3 = others[(idx * 2 + 1) % Math.max(1, others.length)] || lead;
-      const queue = [lead, ...others.slice(0, 12)];
-      return {
-        id: `collage-${lead.videoId}-${idx}`,
-        lead,
-        artistName: primaryArtist,
-        thumbs: [lead.thumbnail, circle2.thumbnail, circle3.thumbnail],
-        palette: COLLAGE_PALETTES[idx % COLLAGE_PALETTES.length],
-        queue,
-      };
-    });
-  }, [tracks]);
-
-  if (collageCards.length === 0) return null;
+  if (!collageCards.length && loading)
+    return (
+      <section
+        data-testid="home-editorial-loading"
+        aria-label="Memuat pilihan Easvarafy"
+        role="status"
+        aria-busy="true"
+        className="space-y-4"
+      >
+        <span className="sr-only">Menyiapkan musik pilihanmu…</span>
+        <div
+          aria-hidden="true"
+          className="skeleton-block motion-reduce:animate-none h-6 w-56 rounded-lg"
+        />
+        <div aria-hidden="true" className="flex gap-3.5 overflow-hidden">
+          {[0, 1, 2, 3].map((index) => (
+            <div
+              key={index}
+              className="skeleton-block motion-reduce:animate-none w-[228px] sm:w-[248px] h-[300px] sm:h-[318px] rounded-[22px] shrink-0"
+            />
+          ))}
+        </div>
+      </section>
+    );
+  if (!collageCards.length) return null;
 
   return (
     <section
       data-testid="home-top-picks-collage"
+      aria-label="Pilihan utama Easvarafy"
       className="space-y-3 cv-auto"
     >
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-[21px] sm:text-[23px] font-bold tracking-tight">
-          Pilihan Teratas untuk Anda
+          {personal ? "Pilihan Teratas untuk Anda" : "Pilihan Easvarafy"}
         </h2>
       </div>
 
@@ -103,8 +103,10 @@ export function TopPicksCollageSection({
             key={card.id}
             type="button"
             onClick={() => onPlayMix(card.lead, card.queue)}
+            aria-label={`Putar pilihan ${card.lead.title}`}
+            data-testid="home-editorial-card"
             style={{ background: card.palette.bg }}
-            className="group relative w-[228px] sm:w-[248px] h-[300px] sm:h-[318px] rounded-[22px] shrink-0 snap-start overflow-hidden text-left p-4 flex flex-col justify-between shadow-lg active:scale-[0.98] transition-transform"
+            className="group relative w-[228px] sm:w-[248px] h-[300px] sm:h-[318px] rounded-[22px] shrink-0 snap-start overflow-hidden text-left p-4 flex flex-col justify-between shadow-lg active:scale-[0.98] transition-transform motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--m3-primary)]"
           >
             {/* Subtle top-right Easvarafy badge */}
             <div className="flex items-center justify-end">
@@ -119,41 +121,52 @@ export function TopPicksCollageSection({
               {/* Primary large circle (top-left) */}
               <div
                 className="absolute left-0 top-0 w-[118px] h-[118px] rounded-full overflow-hidden shadow-xl ring-1"
-                style={{ borderColor: card.palette.ring }}
+                style={{ boxShadow: `0 0 0 1px ${card.palette.ring}, 0 10px 24px rgb(0 0 0 / .16)` }}
               >
                 <ArtworkImage
                   src={card.thumbs[0]}
-                  alt={card.artistName}
+                  alt={card.lead.title}
+                  sizeHint="lg"
                   className="w-full h-full group-hover:scale-105 transition-transform duration-300"
                   rounded="rounded-full"
                 />
               </div>
 
               {/* Secondary medium circle (middle-right) */}
-              <div
-                className="absolute right-0 top-[56px] w-[76px] h-[76px] rounded-full overflow-hidden shadow-xl ring-1"
-                style={{ borderColor: card.palette.ring }}
-              >
-                <ArtworkImage
-                  src={card.thumbs[1]}
-                  alt={`${card.artistName} mix`}
-                  className="w-full h-full group-hover:scale-105 transition-transform duration-300"
-                  rounded="rounded-full"
-                />
-              </div>
+              {card.queue[1] && (
+                <div
+                  className="absolute right-0 top-[56px] w-[76px] h-[76px] rounded-full overflow-hidden shadow-xl ring-1"
+                  style={{ boxShadow: `0 0 0 1px ${card.palette.ring}, 0 10px 24px rgb(0 0 0 / .16)` }}
+                >
+                  <ArtworkImage
+                    src={card.thumbs[1]}
+                    alt={card.queue[1]?.title || ""}
+                    className="w-full h-full group-hover:scale-105 transition-transform duration-300"
+                    rounded="rounded-full"
+                  />
+                </div>
+              )}
 
               {/* Tertiary accent circle (bottom-center-left) */}
-              <div
-                className="absolute left-[46px] bottom-0 w-[68px] h-[68px] rounded-full overflow-hidden shadow-xl ring-1"
-                style={{ borderColor: card.palette.ring }}
+              {card.queue[2] && (
+                <div
+                  className="absolute left-[46px] bottom-0 w-[68px] h-[68px] rounded-full overflow-hidden shadow-xl ring-1"
+                  style={{ boxShadow: `0 0 0 1px ${card.palette.ring}, 0 10px 24px rgb(0 0 0 / .16)` }}
+                >
+                  <ArtworkImage
+                    src={card.thumbs[2]}
+                    alt={card.queue[2]?.title || ""}
+                    className="w-full h-full group-hover:scale-105 transition-transform duration-300"
+                    rounded="rounded-full"
+                  />
+                </div>
+              )}
+              <span
+                aria-hidden="true"
+                className="absolute right-1 bottom-0 w-10 h-10 rounded-full bg-white text-black flex items-center justify-center opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 group-focus-visible:opacity-100 group-focus-visible:translate-y-0 transition-all motion-reduce:transition-none shadow-xl"
               >
-                <ArtworkImage
-                  src={card.thumbs[2]}
-                  alt={`${card.artistName} radio`}
-                  className="w-full h-full group-hover:scale-105 transition-transform duration-300"
-                  rounded="rounded-full"
-                />
-              </div>
+                <Play className="w-4 h-4 fill-current ml-0.5" />
+              </span>
             </div>
 
             {/* Editorial Footer Typography */}
@@ -162,7 +175,7 @@ export function TopPicksCollageSection({
                 Menampilkan {card.artistName}
               </p>
               <p className="text-[16px] font-bold leading-snug text-white line-clamp-2">
-                {card.artistName} &amp; Artis Serupa
+                {card.title}
               </p>
             </div>
           </button>

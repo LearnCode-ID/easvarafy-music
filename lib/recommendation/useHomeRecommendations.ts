@@ -108,7 +108,7 @@ export function useHomeRecommendations(
             exclude: [...excluded, ...because.map((r) => r.track)],
             hideVideoSongs,
             surface: "home",
-            limit: 12,
+            limit: 24,
           });
           setResult({
             owner: store,

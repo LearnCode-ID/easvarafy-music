@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import { MotionConfig } from "motion/react";
+import { ArtworkAmbient } from "./ArtworkAmbient";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { DailyActivityTracker } from "@/components/DailyActivityTracker";
@@ -50,7 +52,9 @@ export function EasvarafyShell() {
   } = useMusic();
 
   return (
-    <div className="min-h-screen w-full max-w-full overflow-x-clip flex flex-col lg:flex-row relative bg-[var(--m3-bg)] transition-colors duration-200">
+    <MotionConfig reducedMotion="user">
+    <div className="glass-app min-h-screen w-full max-w-full overflow-x-clip flex flex-col lg:flex-row relative bg-[var(--m3-bg)] transition-colors duration-200">
+      <ArtworkAmbient />
       {settings.dockStyle === "liquid-glass" && <LiquidGlassFilterDefs />}
       {/* In-Viewport Non-Occluded Video Stage for YouTube IFrame Player API (prevents Android Chrome offscreen iframe audio suspension) */}
       <div
@@ -99,6 +103,7 @@ export function EasvarafyShell() {
               </button>
             </div>
           )}
+          <div className="glass-content" key={`${activeTab}:${detailTarget?.id || ""}:${pathname}`}>
           {detailTarget ? (
             <DetailView />
           ) : pathname.startsWith('/blend') ? (
@@ -135,6 +140,7 @@ export function EasvarafyShell() {
           ) : (
             <SettingsView />
           )}
+          </div>
         </main>
       </div>
 
@@ -143,5 +149,6 @@ export function EasvarafyShell() {
       <NowPlayingSheet />
       <PlaylistPickerModal />
     </div>
+    </MotionConfig>
   );
 }

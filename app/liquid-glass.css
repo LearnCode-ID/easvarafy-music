@@ -1,0 +1,123 @@
+/* Shared optical material. Accent tokens remain owned by the user's theme. */
+:root {
+  --glass-tint: rgb(255 255 255 / .76);
+  --glass-card: rgb(255 255 255 / .56);
+  --glass-control: rgb(255 255 255 / .62);
+  --glass-edge: rgb(255 255 255 / .84);
+  --glass-hairline: rgb(34 46 69 / .12);
+  --glass-ink: #182131;
+  --glass-muted: #3e4a5c;
+  --glass-blur: 20px;
+  --glass-saturation: 180%;
+  --glass-radius: 28px;
+  --glass-radius-inner: 20px;
+  --glass-pill: 999px;
+  --glass-shadow: 0 16px 48px -20px rgb(28 39 68 / .3), 0 3px 12px rgb(28 39 68 / .06);
+  --glass-specular: inset 0 1px 0 var(--glass-edge), inset 1px 0 0 var(--glass-edge);
+  --glass-spring: linear(0, .24 9%, .69 22%, .95 37%, 1.025 53%, 1.01 74%, 1);
+  --ambient-a: #8a96d5;
+  --ambient-b: #70b8b5;
+  --ambient-c: #d6a6bd;
+  --ambient-opacity: .24;
+}
+.dark {
+  --glass-tint: rgb(23 28 39 / .84);
+  --glass-card: rgb(29 35 48 / .64);
+  --glass-control: rgb(255 255 255 / .09);
+  --glass-edge: rgb(255 255 255 / .22);
+  --glass-hairline: rgb(255 255 255 / .12);
+  --glass-ink: #f2f4fa;
+  --glass-muted: #bcc5d5;
+  --glass-shadow: 0 18px 52px -18px rgb(0 0 0 / .6), 0 4px 16px rgb(0 0 0 / .16);
+  --ambient-opacity: .18;
+}
+.glass-app {
+  isolation: isolate;
+  color: var(--glass-ink);
+  font-family: -apple-system, BlinkMacSystemFont, var(--font-dm-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.glass-app h1, .glass-app h2, .glass-app h3 { letter-spacing: -.035em; }
+.glass-ambient { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.glass-ambient-mesh {
+  position: absolute; inset: -12%; opacity: var(--ambient-opacity);
+  background: radial-gradient(ellipse at 12% 15%, var(--ambient-a), transparent 58%), radial-gradient(ellipse at 85% 46%, var(--ambient-b), transparent 55%), radial-gradient(ellipse at 38% 95%, var(--ambient-c), transparent 58%);
+  transition: background 1.8s ease, opacity 1s ease;
+  animation: glass-drift 28s ease-in-out infinite alternate;
+}
+@keyframes glass-drift { to { transform: translate3d(3%, -3%, 0) scale(1.05); } }
+/* Only floating chrome uses backdrop blur. Scrolling cards use a cheap tint. */
+.glass-surface, .glass-app .glass-surface, .glass-app .liquid-glass, .glass-app .liquid-glass-elevated {
+  background: var(--glass-tint);
+  border: 1px solid var(--glass-hairline);
+  border-top-color: var(--glass-edge); border-left-color: var(--glass-edge);
+  box-shadow: var(--glass-specular), var(--glass-shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+}
+.glass-app :is(.metro-surface, .metro-surface-high, .m3-card) {
+  background: var(--glass-card);
+  border: 1px solid var(--glass-hairline);
+  border-top-color: var(--glass-edge);
+  box-shadow: var(--glass-specular), 0 6px 24px -18px rgb(0 0 0 / .2);
+  backdrop-filter: none;
+}
+.glass-app .m3-card { border-radius: var(--glass-radius); }
+.glass-app :is(.profile-button, .profile-input) { background: var(--glass-control); border-color: var(--glass-hairline); }
+.glass-app :is(button, a, input):focus-visible, .glass-player :is(button, input):focus-visible {
+  outline: 2px solid var(--m3-primary); outline-offset: 4px;
+}
+.glass-app button { transition-timing-function: var(--glass-spring); }
+.glass-app button:active:not(:disabled) { scale: .96; }
+.glass-app :is(.text-slate-400, .text-slate-500, .text-slate-600) { color: var(--glass-muted); }
+.glass-topbar { background: var(--glass-tint) !important; border-bottom: 1px solid var(--glass-hairline); backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)); }
+.glass-nav { border-radius: var(--glass-pill); overflow: hidden; }
+.glass-nav [aria-current="page"], .glass-sidebar [aria-current="page"] {
+  background: var(--glass-control); border-radius: var(--glass-pill); box-shadow: var(--glass-specular), 0 2px 8px rgb(0 0 0 / .06);
+}
+.glass-sidebar { border-radius: var(--glass-radius); }
+.glass-content { animation: glass-enter .38s var(--glass-spring) both; }
+@keyframes glass-enter { from { opacity: .5; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+.glass-mini { border-radius: var(--glass-pill); }
+.glass-player { color: var(--glass-ink); }
+.glass-player-art { box-shadow: 0 28px 60px -20px color-mix(in srgb, var(--ambient-a) 50%, transparent), 0 12px 32px rgb(0 0 0 / .22); }
+.glass-player-controls, .glass-volume, .glass-progress {
+  padding: 10px; border-radius: var(--glass-radius); background: var(--glass-card);
+  border: 1px solid var(--glass-hairline); box-shadow: var(--glass-specular);
+}
+.glass-player-controls button { border-radius: var(--glass-pill); }
+.glass-player-controls button[aria-label="Play"], .glass-player-controls button[aria-label="Pause"] {
+  background: var(--glass-tint); color: var(--glass-ink); border: 1px solid var(--glass-edge); box-shadow: var(--glass-specular), var(--glass-shadow);
+}
+.glass-app [data-testid="detail-view"] > section { border-radius: 32px; }
+.glass-app [data-testid="detail-view"] :is(tr, [role="row"]) { border-bottom: 1px solid var(--glass-hairline); }
+@media (hover: hover) {
+  .glass-app :is(.profile-button, .glass-player-controls button):hover { filter: brightness(1.06); box-shadow: var(--glass-specular), 0 0 18px color-mix(in srgb, var(--ambient-a) 18%, transparent); }
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-surface, .glass-app .liquid-glass, .glass-topbar { background: var(--m3-surface) !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass-app { --glass-tint: var(--m3-surface); --glass-card: var(--m3-surface); --glass-control: var(--m3-surface-high); }
+  .glass-surface, .glass-app .glass-surface, .glass-app .liquid-glass, .glass-app .liquid-glass-elevated, .glass-topbar { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .glass-ambient { display: none; }
+}
+@media (prefers-contrast: more) {
+  .glass-app { --glass-tint: var(--m3-surface); --glass-card: var(--m3-surface); --glass-hairline: currentColor; }
+  .glass-ambient { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .glass-ambient-mesh, .glass-content { animation: none; }
+  .glass-app button:active:not(:disabled) { scale: 1; }
+}
+@media (forced-colors: active) {
+  .glass-ambient { display: none; }
+  .glass-surface, .glass-player-controls { border: 1px solid CanvasText; box-shadow: none; }
+}
+.glass-song-list { padding: 5px; border-radius: var(--glass-radius); overflow: hidden; }
+.glass-song-list > div { border-color: var(--glass-hairline); border-radius: var(--glass-radius-inner); }
+.glass-song-list > div + div { border-top-width: 1px; }
+.glass-playlist-hero { box-shadow: var(--glass-specular), var(--glass-shadow) !important; }
+.glass-auth { background-image: radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--ambient-a) 16%, transparent), transparent 60%), radial-gradient(ellipse at 100% 90%, color-mix(in srgb, var(--ambient-b) 14%, transparent), transparent 55%); }
+
+.glass-app p.opacity-60 { opacity: 1; color: var(--glass-muted); }

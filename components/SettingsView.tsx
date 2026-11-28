@@ -706,7 +706,7 @@ export function SettingsView() {
                 <div className="min-w-0">
                   <p className="text-[14.5px] font-semibold">Navigation Bar Style</p>
                   <p className="text-[12.5px] opacity-60">
-                    Liquid Glass (floating &amp; slide) or Default (lightweight for older Android)
+                    Default (CSS glass) atau Liquid Glass (optical refraction &amp; slide)
                   </p>
                 </div>
               </div>
@@ -716,7 +716,7 @@ export function SettingsView() {
                   data-testid="dock-style-default"
                   onClick={() => {
                     updateSettings({ dockStyle: 'default' });
-                    showToast('Navigation bar: Default (lightweight)');
+                    showToast('Navigation bar: Default (CSS glass)');
                   }}
                   className={`h-8 rounded-full text-[12.5px] font-semibold flex items-center justify-center gap-1.5 transition-all ${
                     settings.dockStyle !== 'liquid-glass'

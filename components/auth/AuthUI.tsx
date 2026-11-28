@@ -21,7 +21,7 @@ export function AuthShell({
   mobile?: boolean;
 }) {
   return (
-    <div className="min-h-screen w-full flex flex-col bg-[var(--m3-bg)] text-[#1A1C20] dark:text-[#E6E8EE]">
+    <div className="glass-app glass-auth min-h-screen w-full flex flex-col bg-[var(--m3-bg)] text-[#1A1C20] dark:text-[#E6E8EE]">
       <header className="px-5 pt-6 pb-2 flex items-center justify-center">
         <Link href="/" className="inline-flex items-center gap-2.5 group">
           <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#7C5CFF] via-[#5B8CFF] to-[#22D3C5] flex items-center justify-center shadow-lg shadow-indigo-500/25">

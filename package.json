@@ -21,7 +21,9 @@
     "test:browser:social": "node tests/browser-social.mjs",
     "test:browser:library": "node tests/browser-library-loading.mjs",
     "test:browser:recommendations": "node tests/browser-recommendations.mjs",
-    "test:browser:downloads": "node tests/browser-downloads.mjs"
+    "test:browser:downloads": "node tests/browser-downloads.mjs",
+    "test:browser:home": "node tests/browser-home-editorial.mjs",
+    "test:browser:glass": "node tests/browser-liquid-glass.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.2",

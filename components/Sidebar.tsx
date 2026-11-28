@@ -41,7 +41,7 @@ export function Sidebar() {
   return (
     <aside
       aria-label="Primary navigation"
-      className="hidden lg:flex flex-col w-64 shrink-0 h-[calc(100vh-2rem)] sticky top-4 ml-4 my-4 rounded-3xl liquid-glass p-4 justify-between"
+      className="glass-sidebar hidden lg:flex flex-col w-64 shrink-0 h-[calc(100vh-2rem)] sticky top-4 ml-4 my-4 rounded-3xl liquid-glass p-4 justify-between"
     >
       <div className="flex flex-col gap-6 min-h-0 flex-1">
         {/* Brand Wordmark */}

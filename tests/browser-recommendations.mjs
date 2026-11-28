@@ -92,7 +92,7 @@ try {
     if (url.pathname.endsWith("/up-next")) {
       calls++;
       const seed = url.searchParams.get("videoId");
-      if (seed === "cold0") {
+      if (seed === "cold12") {
         requestedA();
         await delayedA;
       }
@@ -126,7 +126,7 @@ try {
     has: page.getByRole("heading", { name: "Jelajahi musik", exact: true }),
   });
   await picks
-    .getByText("Catalogue cold0", { exact: true })
+    .getByText("Catalogue cold12", { exact: true })
     .waitFor({ timeout: 15000 })
     .catch(async (e) => {
       console.log(
@@ -141,18 +141,18 @@ try {
     await page.locator("body").evaluate((el) => el.scrollWidth <= innerWidth),
     true
   );
-  await picks.getByText("Catalogue cold0", { exact: true }).click();
+  await picks.getByText("Catalogue cold12", { exact: true }).click();
   await page
     .getByRole("button", {
-      name: "Open Now Playing for Catalogue cold0",
+      name: "Open Now Playing for Catalogue cold12",
       exact: true,
     })
     .waitFor();
   await requestA;
-  await picks.getByText("Catalogue cold1", { exact: true }).click();
+  await picks.getByText("Catalogue cold13", { exact: true }).click();
   await page
     .getByRole("button", {
-      name: "Open Now Playing for Catalogue cold1",
+      name: "Open Now Playing for Catalogue cold13",
       exact: true,
     })
     .waitFor();
@@ -166,7 +166,7 @@ try {
           localStorage.getItem("easvarafy:taste:v1:guest") || "{}"
         );
         return s.events?.some(
-          (e) => e.track.videoId === "cold1" && e.kind === "complete"
+          (e) => e.track.videoId === "cold13" && e.kind === "complete"
         );
       },
       null,
@@ -191,12 +191,12 @@ try {
     () => JSON.parse(localStorage.getItem("easvarafy:taste:v1:guest")).events
   );
   assert.ok(
-    signals.some((e) => e.kind === "listen" && e.track.videoId === "cold1")
+    signals.some((e) => e.kind === "listen" && e.track.videoId === "cold13")
   );
   assert.ok(
     !signals.some(
       (e) =>
-        ["listen", "complete"].includes(e.kind) && e.track.videoId === "cold0"
+        ["listen", "complete"].includes(e.kind) && e.track.videoId === "cold12"
     )
   );
   await page
@@ -225,18 +225,18 @@ try {
     .waitFor({ state: "hidden" });
   await page
     .getByRole("button", {
-      name: "Open Now Playing for Catalogue cold1",
+      name: "Open Now Playing for Catalogue cold13",
       exact: true,
     })
     .click();
   await page.getByRole("tab", { name: "Queue", exact: true }).click();
   await page
-    .getByRole("button", { name: /Remove Catalogue cold1-related/ })
+    .getByRole("button", { name: /Remove Catalogue cold13-related/ })
     .first()
     .waitFor();
   assert.equal(
     await page
-      .getByRole("button", { name: /Remove Catalogue cold0-related/ })
+      .getByRole("button", { name: /Remove Catalogue cold12-related/ })
       .count(),
     0,
     "late seed A radio never pollutes seed B queue"

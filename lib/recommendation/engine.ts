@@ -292,12 +292,12 @@ export function rankCandidates(
     );
     const reason =
       candidate.source === "related" && candidate.seed
-        ? `Terkait “${candidate.seed.title}” dari YouTube Music`
+        ? `Dari radio “${candidate.seed.title}”`
         : candidate.source === "artist" && candidate.seed
         ? `Artis yang sama dengan “${candidate.seed.title}”`
         : candidate.source === "library"
         ? "Dari koleksi musikmu"
-        : "Dari katalog YouTube Music sesuai pengaturan wilayah";
+        : "Pilihan katalog sesuai wilayah pilihanmu";
     rows.push({ track: t, score, reason, source: candidate.source });
   }
   rows.sort(
