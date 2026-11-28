@@ -265,6 +265,11 @@ Di dashboard Supabase → Authentication → URL Configuration, tambahkan
 Panduan langkah-demi-langkah mengaktifkan tombol Google (Google Cloud Console →
 Supabase → khusus APK): **[`docs/AUTH_SETUP.md`](./docs/AUTH_SETUP.md)**.
 
+App Links Android (link `https://` share profil/playlist membuka APK langsung,
+konfigurasi keystore/signing release + `assetlinks.json`):
+**[`docs/APP_LINKS.md`](./docs/APP_LINKS.md)** — dijalankan lewat
+`npm run app-links`; CI menandatangani `assembleRelease` dari secrets keystore.
+
 ---
 
 ## Teknologi yang Digunakan

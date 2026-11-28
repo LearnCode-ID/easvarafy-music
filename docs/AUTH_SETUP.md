@@ -158,6 +158,11 @@ Tidak ada yang perlu diubah di Google Cloud Console. Yang dibutuhkan:
    cold start) → `exchangeCodeForSession(code)` → browser sheet ditutup →
    redirect ke `/` atau `/admin/dashboard`. Tidak berhenti di halaman putih.
 
+4. Link `https://` (share profil/playlist) bisa membuka APK langsung lewat
+   **Android App Links** — butuh keystore release stabil + `assetlinks.json` di
+   domain web. Panduan lengkap: **[`APP_LINKS.md`](./APP_LINKS.md)**, cukup
+   `npm run app-links` setelah env keystore diisi.
+
 ---
 
 ## Uji cepat
