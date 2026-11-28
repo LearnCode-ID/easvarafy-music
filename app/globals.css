@@ -400,6 +400,34 @@
   background-color: rgba(255, 255, 255, 0.08);
 }
 
+/* iOS-style Library placeholders; theme-aware and scoped so existing loaders
+   retain their current animation. Only the highlight transform is animated. */
+.library-skeleton .skeleton-block {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  animation: none;
+  background-color: color-mix(in srgb, var(--m3-on-surface) 9%, var(--m3-surface));
+}
+.library-skeleton .skeleton-block::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 15%, color-mix(in srgb, var(--m3-on-surface) 7%, transparent) 50%, transparent 85%);
+  transform: translateX(-110%);
+  animation: librarySkeletonShimmer 1.9s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes librarySkeletonShimmer {
+  100% { transform: translateX(110%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .library-skeleton .skeleton-block::after {
+    animation: none;
+    display: none;
+  }
+}
+
 /* Dynamic Island Equalizer Bars (Compositor-only scaleY) */
 @keyframes islandEqBounce {
   0%, 100% {

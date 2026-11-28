@@ -1,15 +1,15 @@
-import { DEFAULT_SETTINGS } from './seed';
-import type { PlayEvent, PlayerSettings, Track, UserPlaylist } from './types';
+import { DEFAULT_SETTINGS } from "./seed";
+import type { PlayEvent, PlayerSettings, Track, UserPlaylist } from "./types";
 
 const KEYS = {
-  HISTORY: 'sonora_play_history_v1',
-  SETTINGS: 'sonora_settings_v1',
-  SEARCH_HISTORY: 'sonora_search_history_v1',
-  SAVED_COLLECTION: 'sonora_saved_collection_v1',
+  HISTORY: "sonora_play_history_v1",
+  SETTINGS: "sonora_settings_v1",
+  SEARCH_HISTORY: "sonora_search_history_v1",
+  SAVED_COLLECTION: "sonora_saved_collection_v1",
 };
 
 export interface SavedCollectionItem {
-  kind: 'album' | 'playlist' | 'artist';
+  kind: "album" | "playlist" | "artist";
   id: string;
   title: string;
   subtitle: string;
@@ -24,6 +24,16 @@ export interface PersistedLibraryState {
   settings: PlayerSettings;
   searchHistory: string[];
   savedCollection: SavedCollectionItem[];
+}
+
+function safeGet(key: string): string | null {
+  try {
+    return typeof window === "undefined"
+      ? null
+      : window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 
 function safeParse<T>(raw: string | null, fallback: T): T {
@@ -42,7 +52,7 @@ export function loadLibraryState(): PersistedLibraryState {
     playlists: [],
     savedCollection: [],
   };
-  if (typeof window === 'undefined')
+  if (typeof window === "undefined")
     return { ...empty, settings: DEFAULT_SETTINGS, searchHistory: [] };
   // Personal playlists/likes come only from Supabase. Legacy unscoped browser
   // records are left untouched for manual recovery, never imported or seeded.
@@ -50,18 +60,22 @@ export function loadLibraryState(): PersistedLibraryState {
     ...empty,
     settings: {
       ...DEFAULT_SETTINGS,
-      ...safeParse<Partial<PlayerSettings>>(window.localStorage.getItem(KEYS.SETTINGS), {}),
+      ...safeParse<Partial<PlayerSettings>>(safeGet(KEYS.SETTINGS), {}),
     },
-    searchHistory: safeParse<string[]>(window.localStorage.getItem(KEYS.SEARCH_HISTORY), []),
+    searchHistory: safeParse<string[]>(safeGet(KEYS.SEARCH_HISTORY), []),
   };
 }
 
 export function saveHistory(history: PlayEvent[], userId?: string | null) {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(
-      `${KEYS.HISTORY}:${userId || 'guest'}`,
-      JSON.stringify(history.slice(0, 120))
+      `${KEYS.HISTORY}:${userId || "guest"}`,
+      JSON.stringify(
+        history
+          .filter((e) => userId || Date.now() - e.lastPlayedAt < 90 * 86400000)
+          .slice(0, 120)
+      )
     );
   } catch {
     // ignore quota errors
@@ -69,7 +83,7 @@ export function saveHistory(history: PlayEvent[], userId?: string | null) {
 }
 
 export function saveSettings(settings: PlayerSettings) {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(KEYS.SETTINGS, JSON.stringify(settings));
   } catch {
@@ -78,19 +92,25 @@ export function saveSettings(settings: PlayerSettings) {
 }
 
 export function saveSearchHistory(queries: string[]) {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(KEYS.SEARCH_HISTORY, JSON.stringify(queries.slice(0, 12)));
+    window.localStorage.setItem(
+      KEYS.SEARCH_HISTORY,
+      JSON.stringify(queries.slice(0, 12))
+    );
   } catch {
     // ignore quota errors
   }
 }
 
-export function saveCollection(items: SavedCollectionItem[], userId?: string | null) {
-  if (typeof window === 'undefined') return;
+export function saveCollection(
+  items: SavedCollectionItem[],
+  userId?: string | null
+) {
+  if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(
-      `${KEYS.SAVED_COLLECTION}:${userId || 'guest'}`,
+      `${KEYS.SAVED_COLLECTION}:${userId || "guest"}`,
       JSON.stringify(items)
     );
   } catch {
@@ -131,11 +151,17 @@ export function loadAccountDeviceState(userId: string | null): {
   history: PlayEvent[];
   savedCollection: SavedCollectionItem[];
 } {
-  if (typeof window === 'undefined') return { history: [], savedCollection: [] };
+  if (typeof window === "undefined")
+    return { history: [], savedCollection: [] };
   return {
-    history: safeParse(window.localStorage.getItem(`${KEYS.HISTORY}:${userId || 'guest'}`), []),
+    history: safeParse<PlayEvent[]>(
+      safeGet(`${KEYS.HISTORY}:${userId || "guest"}`),
+      []
+    )
+      .filter((e) => userId || Date.now() - e.lastPlayedAt < 90 * 86400000)
+      .slice(0, 120),
     savedCollection: safeParse(
-      window.localStorage.getItem(`${KEYS.SAVED_COLLECTION}:${userId || 'guest'}`),
+      safeGet(`${KEYS.SAVED_COLLECTION}:${userId || "guest"}`),
       []
     ),
   };

@@ -1,19 +1,20 @@
-'use client';
+"use client";
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from "react";
 import {
   Heart,
+  Ban,
   ListEnd,
   ListPlus,
   MoreHorizontal,
   Play,
   Radio,
   User,
-} from 'lucide-react';
-import { useMusic } from './MusicProvider';
-import { DownloadMenuItem } from './DownloadButton';
-import type { Track } from '@/lib/metrolist/types';
-import { useBackHandler } from '@/lib/native/backButton';
+} from "lucide-react";
+import { useMusic } from "./MusicProvider";
+import { DownloadMenuItem } from "./DownloadButton";
+import type { Track } from "@/lib/metrolist/types";
+import { useBackHandler } from "@/lib/native/backButton";
 
 interface TrackContextMenuProps {
   track: Track;
@@ -21,6 +22,8 @@ interface TrackContextMenuProps {
 
 export function TrackContextMenu({ track }: TrackContextMenuProps) {
   const {
+    personalization,
+    showToast,
     playNextInQueue,
     addTrackToQueue,
     startRadio,
@@ -41,8 +44,8 @@ export function TrackContextMenu({ track }: TrackContextMenuProps) {
         setOpen(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [open]);
 
   const liked = isLiked(track.videoId);
@@ -68,6 +71,36 @@ export function TrackContextMenu({ track }: TrackContextMenuProps) {
           onClick={(e) => e.stopPropagation()}
           className="absolute right-0 top-11 z-50 w-56 rounded-2xl liquid-glass-elevated p-1.5 text-sm shadow-2xl"
         >
+          {personalization.state.enabled && (
+            <>
+              <button
+                type="button"
+                disabled={!personalization.ready}
+                onClick={() => {
+                  personalization.store.record(track, "not_interested");
+                  showToast("Lagu dikecualikan dari rekomendasi");
+                  setOpen(false);
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left hover:bg-black/5 dark:hover:bg-white/10"
+              >
+                <Ban className="w-4 h-4" />
+                Tidak tertarik
+              </button>
+              <button
+                type="button"
+                disabled={!personalization.ready}
+                onClick={() => {
+                  personalization.store.record(track, "block_artist");
+                  showToast("Artis dikecualikan dari rekomendasi");
+                  setOpen(false);
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left hover:bg-black/5 dark:hover:bg-white/10"
+              >
+                <Ban className="w-4 h-4" />
+                Jangan sarankan artis ini
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -129,11 +162,11 @@ export function TrackContextMenu({ track }: TrackContextMenuProps) {
             <Heart
               className={`w-4 h-4 ${
                 liked
-                  ? 'fill-[var(--m3-primary)] text-[var(--m3-primary)]'
-                  : 'text-slate-500 dark:text-slate-400'
+                  ? "fill-[var(--m3-primary)] text-[var(--m3-primary)]"
+                  : "text-slate-500 dark:text-slate-400"
               }`}
             />
-            <span>{liked ? 'Remove Like' : 'Like Song'}</span>
+            <span>{liked ? "Remove Like" : "Like Song"}</span>
           </button>
 
           {primaryArtistId && (
@@ -141,7 +174,7 @@ export function TrackContextMenu({ track }: TrackContextMenuProps) {
               type="button"
               onClick={() => {
                 openDetail({
-                  kind: 'artist',
+                  kind: "artist",
                   id: primaryArtistId,
                   title: track.artists[0].name,
                 });

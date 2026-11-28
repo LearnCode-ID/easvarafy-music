@@ -1,5 +1,6 @@
 'use client';
 
+import { PersonalizationSettings } from './PersonalizationSettings';
 import React, { useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -1739,6 +1740,8 @@ export function SettingsView() {
                 })}
               </div>
             </div>
+
+            <PersonalizationSettings />
 
             {/* Auto-Continue Radio */}
             <PreferenceRow

@@ -22,6 +22,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { LibrarySkeleton, LibrarySyncIndicator } from './LibrarySkeleton';
 import { BlendLibrarySection } from './BlendLibrarySection';
 import { ArtworkImage } from './ArtworkImage';
 import { useMusic } from './MusicProvider';
@@ -67,6 +68,7 @@ const SORT_OPTIONS: Array<{ id: LibraryTrackSortMode; label: string }> = [
 export function LibraryView() {
   const {
     likedTracks,
+    libraryLoading,
     history,
     playlists,
     savedCollection,
@@ -85,6 +87,10 @@ export function LibraryView() {
     typeof navigator !== 'undefined' && navigator.onLine === false ? 'downloads' : 'playlists'
   );
   const [viewMode, setViewMode] = useState<ViewLayout>('grid');
+  const showLoadingSkeleton = libraryLoading && (
+    (tab === 'playlists' && playlists.length === 0) ||
+    (tab === 'liked' && likedTracks.length === 0)
+  );
   const [sortMode, setSortMode] = useState<LibraryTrackSortMode>('recent');
   const [localFilter, setLocalFilter] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -202,9 +208,11 @@ export function LibraryView() {
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-950 dark:text-white">
             Library
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          {showLoadingSkeleton ? (
+            <div className="library-skeleton mt-2" aria-hidden="true"><div className="skeleton-block h-3.5 w-48 max-w-full rounded-full" /></div>
+          ) : <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             {playlists.length} playlists · {likedTracks.length} liked · {history.length} played
-          </p>
+          </p>}
         </div>
 
         {/* Expressive 6-Tab Switcher */}
@@ -249,6 +257,7 @@ export function LibraryView() {
         </div>
       </div>
 
+      {libraryLoading && !showLoadingSkeleton && tab !== 'blend' && <LibrarySyncIndicator />}
       {/* Stats & Year-in-Music Recap Tab */}
       {tab === 'stats' && <StatsView />}
       {tab === 'blend' && <BlendLibrarySection />}
@@ -256,6 +265,9 @@ export function LibraryView() {
       {/* Downloads: Lagu Tersimpan Offline */}
       {tab === 'downloads' && <OfflineDownloadsSection />}
 
+      {showLoadingSkeleton ? (
+        <LibrarySkeleton layout={tab === 'liked' ? 'list' : viewMode} />
+      ) : <>
       {/* Local Filter + Sort + View Toggle Bar (for Playlists / Liked / History / Saved) */}
       {tab !== 'stats' && tab !== 'blend' && (
         <div className="flex flex-row items-center justify-between gap-2">
@@ -947,6 +959,7 @@ export function LibraryView() {
           )}
         </div>
       )}
+      </>}
     </div>
   );
 }

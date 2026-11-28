@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { DailyActivityTracker } from "@/components/DailyActivityTracker";
 import { BlendLanding, BlendReturnBridge } from '@/components/BlendLanding';
+import { LibrarySyncIndicator } from "@/components/LibrarySkeleton";
 import { ProfileView } from "@/components/ProfileView";
 import { ChartsView } from "@/components/ChartsView";
 import { DetailView } from "@/components/DetailView";
@@ -81,16 +82,9 @@ export function EasvarafyShell() {
           }`}
         >
           <DailyActivityTracker />
-          {(libraryLoading || librarySaving) && (
-            <p
-              role="status"
-              className="text-xs mb-3 text-[var(--m3-on-surface-variant)]"
-            >
-              {librarySaving
-                ? "Menyimpan ke Supabase…"
-                : "Menyinkronkan library…"}
-            </p>
-          )}
+          {librarySaving ? (
+            <p role="status" className="text-xs mb-3 text-[var(--m3-on-surface-variant)]">Menyimpan ke Supabase…</p>
+          ) : libraryLoading && activeTab !== 'library' ? <LibrarySyncIndicator className="mb-3" /> : null}
           {libraryError && (
             <div
               role="alert"

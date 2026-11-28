@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, Loader2, RefreshCw, Shuffle } from "lucide-react";
 import { useAuth } from "./auth/AuthProvider";
+import { LibrarySkeleton, LibrarySyncIndicator } from "./LibrarySkeleton";
 import { useMusic } from "./MusicProvider";
 import {
   BLEND_EVENT,
@@ -190,9 +191,7 @@ function BlendLibraryContent() {
         </p>
       )}
       {loading ? (
-        <p role="status" className="text-sm">
-          Memuat Blend…
-        </p>
+        rows.length ? <LibrarySyncIndicator /> : <LibrarySkeleton layout="blend" toolbar={false} label="Memuat Blend" />
       ) : !rows.length && !error ? (
         <div className="m3-card p-6 text-sm text-[var(--m3-on-surface-variant)]">
           Belum ada Blend. Buat undangan atau terima undangan teman untuk

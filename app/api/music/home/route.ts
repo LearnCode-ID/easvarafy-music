@@ -1,39 +1,38 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { SEED_TRACKS } from '@/lib/metrolist/seed';
-import type { HomeShelf, Track } from '@/lib/metrolist/types';
-import { corsOptionsResponse } from '@/lib/server/cors';
+import { NextRequest, NextResponse } from "next/server";
+import type { HomeShelf, Track } from "@/lib/metrolist/types";
+import { corsOptionsResponse } from "@/lib/server/cors";
 import {
   getYTMusicClient,
   normalizeHomeSections,
   normalizeSong,
-} from '@/lib/server/ytmusic';
+} from "@/lib/server/ytmusic";
 
-export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export function OPTIONS() {
   return corsOptionsResponse();
 }
 
 const MOOD_QUERY_MAP: Record<string, string> = {
-  energize: 'upbeat pop dance hits',
-  relax: 'chill acoustic ambient indie',
-  focus: 'lofi beats instrumental study',
-  workout: 'high energy workout gym music',
-  commute: 'feel good driving songs',
-  party: 'top dance party hits',
+  energize: "upbeat pop dance hits",
+  relax: "chill acoustic ambient indie",
+  focus: "lofi beats instrumental study",
+  workout: "high energy workout gym music",
+  commute: "feel good driving songs",
+  party: "top dance party hits",
 };
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const gl = searchParams.get('gl') || 'ID';
-  const mood = (searchParams.get('mood') || 'all').toLowerCase();
-  const cookie = req.headers.get('x-yt-cookie') || undefined;
+  const gl = searchParams.get("gl") || "ID";
+  const mood = (searchParams.get("mood") || "all").toLowerCase();
+  const cookie = req.headers.get("x-yt-cookie") || undefined;
 
   try {
-    const yt = await getYTMusicClient({ gl, hl: 'en', cookies: cookie });
+    const yt = await getYTMusicClient({ gl, hl: "en", cookies: cookie });
 
-    if (mood !== 'all' && MOOD_QUERY_MAP[mood]) {
+    if (mood !== "all" && MOOD_QUERY_MAP[mood]) {
       const [songs, playlists] = await Promise.all([
         yt.searchSongs(MOOD_QUERY_MAP[mood]).then((res) => res.slice(0, 16)),
         yt.searchPlaylists(MOOD_QUERY_MAP[mood]).then((res) => res.slice(0, 8)),
@@ -44,18 +43,20 @@ export async function GET(req: NextRequest) {
         {
           id: `mood-tracks-${mood}`,
           title: `${mood.charAt(0).toUpperCase() + mood.slice(1)} Picks`,
-          items: moodTracks.map((t) => ({ ...t, kind: 'TRACK' as const })),
+          items: moodTracks.map((t) => ({ ...t, kind: "TRACK" as const })),
         },
         {
           id: `mood-playlists-${mood}`,
-          title: `${mood.charAt(0).toUpperCase() + mood.slice(1)} Mixes & Playlists`,
+          title: `${
+            mood.charAt(0).toUpperCase() + mood.slice(1)
+          } Mixes & Playlists`,
           items: playlists.map((p) => ({
-            type: 'PLAYLIST' as const,
-            kind: 'PLAYLIST' as const,
+            type: "PLAYLIST" as const,
+            kind: "PLAYLIST" as const,
             playlistId: p.playlistId,
             title: p.name,
-            artist: p.artist?.name || 'YouTube Music',
-            thumbnail: p.thumbnails[p.thumbnails.length - 1]?.url || '',
+            artist: p.artist?.name || "YouTube Music",
+            thumbnail: p.thumbnails[p.thumbnails.length - 1]?.url || "",
           })),
         },
       ];
@@ -63,13 +64,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         shelves,
         quickPickCandidates: moodTracks,
-        source: 'ytmusic-api',
+        source: "ytmusic-api",
       });
     }
 
     const [rawSections, chartSongs] = await Promise.all([
       yt.getHomeSections(),
-      yt.searchSongs(gl === 'ID' ? 'top hits indonesia' : 'top global hits').catch(() => []),
+      yt
+        .searchSongs(gl === "ID" ? "top hits indonesia" : "top global hits")
+        .catch(() => []),
     ]);
 
     const shelves = normalizeHomeSections(rawSections);
@@ -78,7 +81,7 @@ export async function GET(req: NextRequest) {
     const shelfTracks: Track[] = [];
     for (const shelf of shelves) {
       for (const item of shelf.items) {
-        if (item.kind === 'TRACK') {
+        if (item.kind === "TRACK") {
           shelfTracks.push(item);
         }
       }
@@ -90,20 +93,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       shelves,
       quickPickCandidates: quickPickCandidates.slice(0, 32),
-      source: 'ytmusic-api',
+      source: "ytmusic-api",
     });
   } catch (error) {
-    console.error('Home API fallback triggered:', error);
-    return NextResponse.json({
-      shelves: [
-        {
-          id: 'fallback-essentials',
-          title: 'Essential Mixes',
-          items: SEED_TRACKS.map((t) => ({ ...t, kind: 'TRACK' as const })),
-        },
-      ],
-      quickPickCandidates: SEED_TRACKS,
-      source: 'fallback',
-    });
+    console.warn(
+      "Home provider unavailable",
+      error instanceof Error ? error.message : "Unknown provider failure"
+    );
+    return NextResponse.json(
+      { shelves: [], quickPickCandidates: [], source: "unavailable" },
+      { status: 502 }
+    );
   }
 }
