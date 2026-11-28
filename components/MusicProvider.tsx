@@ -14,7 +14,10 @@ import {
 } from "@/lib/recommendation/engine";
 import { newSignalId } from "@/lib/recommendation/store";
 import { RequestGate } from "@/lib/recommendation/client";
-import { createSnapshotStore, type SnapshotStore } from "@/lib/ui/snapshotStore";
+import {
+  createSnapshotStore,
+  type SnapshotStore,
+} from "@/lib/ui/snapshotStore";
 import { usePathname, useRouter } from "next/navigation";
 import { isNativeApp } from "@/lib/auth/native";
 import React, {
@@ -241,7 +244,7 @@ interface MusicContextValue {
         "name" | "description" | "coverUrl" | "isPublic" | "tracks"
       >
     >
-  ) => void;
+  ) => Promise<UserPlaylist | null>;
   playlists: UserPlaylist[];
   createPlaylist: (
     name: string,
@@ -297,14 +300,23 @@ const noSubscription = () => () => {};
 export function useMusic(): MusicState {
   const store = useContext(MusicContext);
   if (!store) throw new Error("useMusic must be used inside MusicProvider");
-  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
+  return useSyncExternalStore(
+    store.subscribe,
+    store.getSnapshot,
+    store.getServerSnapshot
+  );
 }
 
 /** Only visible time displays subscribe to the 250ms clock, not the whole app. */
 export function usePlaybackProgress(enabled = true): number {
   const store = useContext(ProgressContext);
-  if (!store) throw new Error("usePlaybackProgress must be used inside MusicProvider");
-  return useSyncExternalStore(enabled ? store.subscribe : noSubscription, enabled ? store.getSnapshot : () => 0, () => 0);
+  if (!store)
+    throw new Error("usePlaybackProgress must be used inside MusicProvider");
+  return useSyncExternalStore(
+    enabled ? store.subscribe : noSubscription,
+    enabled ? store.getSnapshot : () => 0,
+    () => 0
+  );
 }
 
 export function MusicProvider({ children }: { children: React.ReactNode }) {
@@ -370,7 +382,9 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const [isBuffering, setIsBuffering] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const playbackTimeRef = useRef(0);
-  useLayoutEffect(() => { playbackTimeRef.current = currentTime; }, [currentTime]);
+  useLayoutEffect(() => {
+    playbackTimeRef.current = currentTime;
+  }, [currentTime]);
   const [duration, setDuration] = useState(0);
   const [volume, setVolumeState] = useState(85);
   const [isMuted, setIsMuted] = useState(false);
@@ -2534,6 +2548,11 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
           ...prev.filter((p) => p.id !== saved.id),
         ]);
         const before = playlistsRef.current.find((p) => p.id === saved.id);
+        if (
+          before?.isPublic !== saved.isPublic ||
+          before?.coverUrl !== saved.coverUrl
+        )
+          window.dispatchEvent(new Event("easvarafy:privacy"));
         for (const track of saved.tracks)
           if (!before?.tracks.some((t) => t.videoId === track.videoId))
             tasteStore.record(track, "playlist");
@@ -2574,8 +2593,9 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const editPlaylist = useCallback(
     (id: string, patch: Partial<UserPlaylist>) => {
       const playlist = playlists.find((p) => p.id === id);
-      if (playlist)
-        void persistPlaylist({ ...playlist, ...patch, id: playlist.id });
+      return playlist
+        ? persistPlaylist({ ...playlist, ...patch, id: playlist.id })
+        : Promise.resolve(null);
     },
     [persistPlaylist, playlists]
   );
@@ -2957,12 +2977,14 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const [musicStore] = useState(() => createSnapshotStore(value));
   const [progressStore] = useState(() => createSnapshotStore(currentTime));
   useLayoutEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       const previous = musicStore.getSnapshot();
-      const changed = (Object.keys(value) as Array<keyof MusicState>).filter(key => !Object.is(previous[key], value[key]));
+      const changed = (Object.keys(value) as Array<keyof MusicState>).filter(
+        (key) => !Object.is(previous[key], value[key])
+      );
       if (changed.length) {
-        performance.clearMarks('easvarafy:music-change');
-        performance.mark('easvarafy:music-change', { detail: changed });
+        performance.clearMarks("easvarafy:music-change");
+        performance.mark("easvarafy:music-change", { detail: changed });
       }
     }
     musicStore.publish(value);
@@ -2971,18 +2993,18 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <MusicContext.Provider value={musicStore}>
-    <ProgressContext.Provider value={progressStore}>
-      {children}
-      {/* Offline engine: plays downloaded songs (local file / blob URL). */}
-      <audio
-        ref={audioElRef}
-        preload="auto"
-        playsInline
-        aria-hidden="true"
-        className="hidden"
-        data-testid="offline-audio"
-      />
-    </ProgressContext.Provider>
+      <ProgressContext.Provider value={progressStore}>
+        {children}
+        {/* Offline engine: plays downloaded songs (local file / blob URL). */}
+        <audio
+          ref={audioElRef}
+          preload="auto"
+          playsInline
+          aria-hidden="true"
+          className="hidden"
+          data-testid="offline-audio"
+        />
+      </ProgressContext.Provider>
     </MusicContext.Provider>
   );
 }

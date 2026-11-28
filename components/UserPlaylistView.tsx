@@ -10,7 +10,6 @@ import {
   CircleArrowDown,
   Globe2,
   ListMusic,
-  Loader2,
   LockKeyhole,
   MoreVertical,
   Pause,
@@ -21,7 +20,6 @@ import {
   Share2,
   Shuffle,
   Trash2,
-  X,
 } from "lucide-react";
 import { useAuth } from "./auth/AuthProvider";
 import { useMusic } from "./MusicProvider";
@@ -29,6 +27,7 @@ import { ArtworkImage } from "./ArtworkImage";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { TrackContextMenu } from "./TrackContextMenu";
 import { OfflineAvailability } from "./DownloadButton";
+import { PlaylistActionDialog } from "./PlaylistActionDialog";
 import { PlaylistEditor } from "./PlaylistEditor";
 import {
   filterTracksByQuery,
@@ -45,7 +44,6 @@ import {
   type PlaylistSort,
 } from "@/lib/ui/playlist";
 import type { UserPlaylist } from "@/lib/metrolist/types";
-import { useBackHandler } from "@/lib/native/backButton";
 import { cn } from "@/lib/utils";
 
 export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
@@ -61,6 +59,7 @@ export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
     removeTrackFromPlaylist,
     editPlaylist,
     librarySaving,
+    libraryError,
     showToast,
     likedTracks,
     history,
@@ -69,13 +68,10 @@ export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
   } = useMusic();
   const [sort, setSort] = useState<PlaylistSort>("custom");
   const [filter, setFilter] = useState("");
-  const [showFilter, setShowFilter] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [panel, setPanel] = useState<
-    "details" | "add" | "menu" | "download" | null
+    "details" | "add" | "menu" | "download" | "edit" | "sort" | "search" | null
   >(null);
   const [downloading, setDownloading] = useState(false);
-  useBackHandler(Boolean(panel), () => setPanel(null));
   const tracks = useMemo(
     () =>
       filterTracksByQuery(sortPlaylistTracks(playlist.tracks, sort), filter),
@@ -147,6 +143,94 @@ export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
       setDownloading(false);
     }
   };
+  const renderRows = (isEditing: boolean) =>
+    (isEditing ? playlist.tracks : tracks).map((track) => {
+      const selected = currentTrack?.videoId === track.videoId;
+      const index = playlist.tracks.indexOf(track);
+      return (
+        <div
+          key={track.videoId}
+          className="playlist-track-row"
+          data-track-id={track.videoId}
+        >
+          <button
+            className="flex flex-1 min-w-0 items-center gap-3 text-left"
+            aria-label={`Putar ${track.title}`}
+            onClick={() =>
+              playTrack(track, isEditing ? playlist.tracks : tracks)
+            }
+          >
+            <ArtworkImage
+              src={track.thumbnail}
+              alt={track.title}
+              className="h-12 w-12 shrink-0"
+              rounded="rounded-md"
+              sizeHint="sm"
+            />
+            <span className="min-w-0 flex-1">
+              <span
+                className={cn(
+                  "block text-sm font-semibold truncate",
+                  selected && "text-[var(--m3-primary)]"
+                )}
+              >
+                {track.title}
+              </span>
+              <span className="block text-xs text-[var(--glass-muted)] truncate mt-1">
+                {track.artist}
+              </span>
+            </span>
+          </button>
+          <OfflineAvailability track={track} />
+          {isEditing ? (
+            <div className="flex shrink-0">
+              <button
+                className="playlist-icon !w-8 !min-w-8"
+                disabled={librarySaving || index === 0}
+                aria-label={`Naikkan ${track.title}`}
+                onClick={() => move(index, -1)}
+              >
+                <ArrowUp size={18} />
+              </button>
+              <button
+                className="playlist-icon !w-8 !min-w-8"
+                disabled={librarySaving || index === playlist.tracks.length - 1}
+                aria-label={`Turunkan ${track.title}`}
+                onClick={() => move(index, 1)}
+              >
+                <ArrowDown size={18} />
+              </button>
+              <button
+                className="playlist-icon !w-8 !min-w-8"
+                disabled={librarySaving}
+                aria-label={`Remove ${track.title} from playlist`}
+                onClick={() =>
+                  removeTrackFromPlaylist(playlist.id, track.videoId)
+                }
+              >
+                <Trash2 size={18} />
+              </button>
+            </div>
+          ) : (
+            <TrackContextMenu track={track} vertical popup />
+          )}
+        </div>
+      );
+    });
+  const panelTitle =
+    panel === "add"
+      ? "Tambahkan lagu"
+      : panel === "download"
+      ? "Unduh playlist?"
+      : panel === "details"
+      ? "Nama & detail"
+      : panel === "edit"
+      ? "Edit lagu playlist"
+      : panel === "sort"
+      ? "Urutkan playlist"
+      : panel === "search"
+      ? "Cari di playlist"
+      : "Opsi playlist";
   return (
     <div data-testid="detail-view" className="user-playlist pb-8">
       <section className="user-playlist-hero" aria-label="Detail playlist kamu">
@@ -162,6 +246,7 @@ export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
           <button
             className="playlist-icon playlist-icon-scrim"
             aria-label="Opsi playlist"
+            aria-haspopup="dialog"
             aria-expanded={panel === "menu"}
             onClick={() => togglePanel("menu")}
           >
@@ -210,166 +295,186 @@ export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
             </p>
           )}
         </div>
-        <div className="flex items-center justify-between gap-3 mt-5">
-          <div className="flex items-center gap-1">
-            <span aria-hidden="true" className="playlist-mini-cover">
-              <ArtworkImage
-                src={cover}
-                alt=""
-                className="w-full h-full"
-                rounded="rounded"
-                sizeHint="sm"
-              />
-            </span>
-            <button
-              className="playlist-icon"
-              aria-label="Unduh playlist"
-              disabled={!playlist.tracks.length || downloading}
-              onClick={() => setPanel("download")}
-            >
-              {downloading ? (
-                <Loader2 className="animate-spin" />
-              ) : (
-                <CircleArrowDown />
-              )}
-            </button>
-            <button
-              className="playlist-icon"
-              aria-label="Bagikan daftar lagu"
-              onClick={() => void share()}
-            >
-              <Share2 />
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              className={cn(
-                "playlist-icon",
-                queueState.shuffle && "text-[var(--m3-primary)]"
-              )}
-              aria-label="Acak playlist"
-              aria-pressed={queueState.shuffle}
-              disabled={!playlist.tracks.length}
-              onClick={toggleShuffle}
-            >
-              <Shuffle />
-            </button>
-            <button
-              className="playlist-play"
-              aria-label={
-                active && isPlaying ? "Jeda playlist" : "Putar playlist"
-              }
-              disabled={!tracks.length}
-              onClick={() => {
-                if (active) togglePlayPause();
-                else if (tracks[0]) playTrack(tracks[0], tracks);
-              }}
-            >
-              {active && isPlaying ? (
-                <Pause className="fill-current" />
-              ) : (
-                <Play className="fill-current ml-1" />
-              )}
-            </button>
-          </div>
+        <div className="flex justify-end mt-5">
+          <button
+            className="playlist-play"
+            aria-label={
+              active && isPlaying ? "Jeda playlist" : "Putar playlist"
+            }
+            disabled={!tracks.length}
+            onClick={() => {
+              if (active) togglePlayPause();
+              else if (tracks[0]) playTrack(tracks[0], tracks);
+            }}
+          >
+            {active && isPlaying ? (
+              <Pause className="fill-current" />
+            ) : (
+              <Play className="fill-current ml-1" />
+            )}
+          </button>
         </div>
       </section>
 
-      <div className="playlist-chip-row" aria-label="Kelola playlist">
-        <button
-          className="playlist-chip"
-          onClick={() => togglePanel("add")}
-          aria-expanded={panel === "add"}
-        >
-          <Plus />
-          Tambahkan
-        </button>
-        <button
-          className="playlist-chip"
-          aria-pressed={editing}
-          onClick={() => {
-            setEditing(!editing);
-            setSort("custom");
-            setFilter("");
-            setShowFilter(false);
-          }}
-        >
-          <ListMusic />
-          {editing ? "Selesai" : "Edit"}
-        </button>
-        <button
-          className="playlist-chip"
-          aria-expanded={panel === "details"}
-          onClick={() => togglePanel("details")}
-        >
-          <Pencil />
-          Nama &amp; detail
-        </button>
-        <label className="playlist-chip">
-          <ArrowUpDown />
-          <span className="sr-only">Urutkan lagu playlist</span>
-          <select
-            aria-label="Urutkan lagu playlist"
-            value={sort}
-            disabled={editing}
-            onChange={(event) => setSort(event.target.value as PlaylistSort)}
-            className="bg-transparent min-w-0 outline-none"
-          >
-            <option value="custom">Urutan saya</option>
-            <option value="title">Judul A–Z</option>
-            <option value="artist">Artis A–Z</option>
-            <option value="duration">Durasi</option>
-          </select>
-        </label>
-        <button
-          className="playlist-chip"
-          aria-expanded={showFilter}
-          disabled={editing}
-          onClick={() => {
-            setShowFilter(!showFilter);
-            setFilter("");
-          }}
-        >
-          <Search />
-          Cari
-        </button>
-      </div>
-
       {panel && (
-        <section
-          className="m3-card p-4 my-4 space-y-4"
-          aria-label="Pengaturan playlist"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="font-bold">
-              {panel === "add"
-                ? "Tambahkan lagu"
-                : panel === "download"
-                ? "Unduh playlist?"
-                : "Kelola playlist"}
-            </h2>
-            <button
-              className="playlist-icon"
-              aria-label="Tutup pengaturan playlist"
-              onClick={() => setPanel(null)}
+        <PlaylistActionDialog title={panelTitle} onClose={() => setPanel(null)}>
+          {librarySaving && (
+            <p role="status" className="text-sm">
+              Menyimpan ke Supabase…
+            </p>
+          )}
+          {libraryError && (
+            <p role="alert" className="text-sm">
+              {libraryError}
+            </p>
+          )}
+          {panel === "sort" && (
+            <div
+              className="space-y-2"
+              role="group"
+              aria-label="Urutkan lagu playlist"
             >
-              <X />
-            </button>
-          </div>
+              {(
+                [
+                  ["custom", "Urutan saya"],
+                  ["title", "Judul A–Z"],
+                  ["artist", "Artis A–Z"],
+                  ["duration", "Durasi"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  className="profile-button w-full justify-between"
+                  aria-pressed={sort === value}
+                  onClick={() => {
+                    setSort(value);
+                    setPanel(null);
+                  }}
+                >
+                  {label}
+                  {sort === value && <Check size={18} />}
+                </button>
+              ))}
+            </div>
+          )}
+          {panel === "search" && (
+            <>
+              <label className="block text-sm">
+                Cari judul atau artis
+                <input
+                  className="profile-input"
+                  aria-label="Filter playlist tracks"
+                  placeholder="Cari di playlist ini"
+                  value={filter}
+                  onChange={(event) => setFilter(event.target.value)}
+                />
+              </label>
+              <p className="text-sm text-[var(--glass-muted)]">
+                {tracks.length} lagu cocok
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="profile-button"
+                  onClick={() => setPanel(null)}
+                >
+                  Tampilkan hasil
+                </button>
+                <button
+                  className="profile-button"
+                  onClick={() => setFilter("")}
+                >
+                  Hapus pencarian
+                </button>
+              </div>
+            </>
+          )}
+          {panel === "edit" && (
+            <>
+              <p className="text-sm text-[var(--glass-muted)]">
+                Atur urutan aslimu atau hapus lagu dari playlist.
+              </p>
+              {!playlist.tracks.length ? (
+                <p className="text-sm">Playlist ini masih kosong.</p>
+              ) : (
+                <div data-testid="playlist-edit-tracks">{renderRows(true)}</div>
+              )}
+              <p className="text-xs text-[var(--glass-muted)] flex items-start gap-2">
+                <Check size={16} className="shrink-0" />
+                Urutan dan penghapusan berubah hanya setelah penyimpanan server
+                berhasil.
+              </p>
+              <button
+                className="profile-button w-full justify-center"
+                onClick={() => setPanel(null)}
+              >
+                Selesai
+              </button>
+            </>
+          )}
           {panel === "details" && (
             <PlaylistEditor playlist={playlist} initiallyOpen />
           )}
           {panel === "menu" && (
-            <div className="flex flex-wrap gap-2">
+            <div className="space-y-2">
               <button
-                className="profile-button"
+                className="profile-button w-full"
+                aria-label="Acak playlist"
+                aria-pressed={queueState.shuffle}
+                disabled={!playlist.tracks.length}
+                onClick={toggleShuffle}
+              >
+                <Shuffle size={18} />
+                Acak playlist
+                {queueState.shuffle && <Check size={16} className="ml-auto" />}
+              </button>
+              <button
+                className="profile-button w-full"
+                onClick={() => setPanel("add")}
+              >
+                <Plus size={18} />
+                Tambahkan lagu
+              </button>
+              <button
+                className="profile-button w-full"
+                onClick={() => setPanel("edit")}
+              >
+                <ListMusic size={18} />
+                Edit lagu & urutan
+              </button>
+              <button
+                className="profile-button w-full"
                 onClick={() => setPanel("details")}
               >
-                <Pencil size={16} />
-                Edit nama &amp; detail
+                <Pencil size={18} />
+                Edit nama & detail
               </button>
-              <button className="profile-button" onClick={() => void share()}>
-                <Share2 size={16} />
+              <button
+                className="profile-button w-full"
+                onClick={() => setPanel("sort")}
+              >
+                <ArrowUpDown size={18} />
+                Urutkan lagu
+              </button>
+              <button
+                className="profile-button w-full"
+                onClick={() => setPanel("search")}
+              >
+                <Search size={18} />
+                Cari di playlist
+              </button>
+              <button
+                className="profile-button w-full"
+                disabled={!playlist.tracks.length || downloading}
+                onClick={() => setPanel("download")}
+              >
+                <CircleArrowDown size={18} />
+                Unduh playlist
+              </button>
+              <button
+                className="profile-button w-full"
+                onClick={() => void share()}
+              >
+                <Share2 size={18} />
                 Bagikan daftar lagu
               </button>
             </div>
@@ -437,22 +542,9 @@ export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
               </ul>
             </>
           )}
-        </section>
+        </PlaylistActionDialog>
       )}
 
-      {showFilter && (
-        <label className="relative block mt-3 mb-2 max-w-md">
-          <Search className="absolute left-3 top-3 w-4 h-4 text-[var(--glass-muted)]" />
-          <input
-            className="profile-input !rounded-full !pl-10 !mt-0"
-            aria-label="Filter playlist tracks"
-            placeholder="Cari di playlist ini"
-            value={filter}
-            disabled={editing}
-            onChange={(event) => setFilter(event.target.value)}
-          />
-        </label>
-      )}
       {!playlist.tracks.length ? (
         <p className="py-10 text-sm text-[var(--glass-muted)]">
           Playlist ini masih kosong. Tambahkan lagu untuk mulai mendengarkan.
@@ -461,87 +553,8 @@ export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
         <p className="py-10 text-sm">Tidak ada lagu yang cocok.</p>
       ) : (
         <div data-testid="user-playlist-tracks" className="playlist-track-list">
-          {tracks.map((track) => {
-            const selected = currentTrack?.videoId === track.videoId;
-            const index = playlist.tracks.indexOf(track);
-            return (
-              <div
-                key={track.videoId}
-                className="playlist-track-row"
-                data-track-id={track.videoId}
-              >
-                <button
-                  className="flex flex-1 min-w-0 items-center gap-3 text-left"
-                  aria-label={`Putar ${track.title}`}
-                  onClick={() => playTrack(track, tracks)}
-                >
-                  <ArtworkImage
-                    src={track.thumbnail}
-                    alt={track.title}
-                    className="h-12 w-12 shrink-0"
-                    rounded="rounded-md"
-                    sizeHint="sm"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span
-                      className={cn(
-                        "block text-sm font-semibold truncate",
-                        selected && "text-[var(--m3-primary)]"
-                      )}
-                    >
-                      {track.title}
-                    </span>
-                    <span className="block text-xs text-[var(--glass-muted)] truncate mt-1">
-                      {track.artist}
-                    </span>
-                  </span>
-                </button>
-                <OfflineAvailability track={track} />
-                {editing ? (
-                  <div className="flex shrink-0">
-                    <button
-                      className="playlist-icon !w-8 !min-w-8"
-                      disabled={librarySaving || index === 0}
-                      aria-label={`Naikkan ${track.title}`}
-                      onClick={() => move(index, -1)}
-                    >
-                      <ArrowUp size={18} />
-                    </button>
-                    <button
-                      className="playlist-icon !w-8 !min-w-8"
-                      disabled={
-                        librarySaving || index === playlist.tracks.length - 1
-                      }
-                      aria-label={`Turunkan ${track.title}`}
-                      onClick={() => move(index, 1)}
-                    >
-                      <ArrowDown size={18} />
-                    </button>
-                    <button
-                      className="playlist-icon !w-8 !min-w-8"
-                      disabled={librarySaving}
-                      aria-label={`Remove ${track.title} from playlist`}
-                      onClick={() =>
-                        removeTrackFromPlaylist(playlist.id, track.videoId)
-                      }
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
-                ) : (
-                  <TrackContextMenu track={track} vertical />
-                )}
-              </div>
-            );
-          })}
+          {renderRows(false)}
         </div>
-      )}
-      {editing && (
-        <p className="text-xs text-[var(--glass-muted)] mt-4 flex items-center gap-2">
-          <Check size={14} />
-          Urutan dan penghapusan berubah hanya setelah penyimpanan server
-          berhasil.
-        </p>
       )}
     </div>
   );

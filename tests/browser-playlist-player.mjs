@@ -150,8 +150,30 @@ try {
     };
     let saves = 0,
       rejectSave = false;
+    let uploads = 0,
+      rejectUpload = false;
+    const imageBytes = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l1sAAAAASUVORK5CYII=",
+      "base64"
+    );
     await page.route("**/fixture.supabase.co/**", async (route) => {
       const url = route.request().url();
+      if (url.includes("/storage/v1/object/")) {
+        if (route.request().method() === "POST") {
+          uploads++;
+          if (rejectUpload)
+            return route.fulfill({
+              status: 400,
+              json: {
+                message: "Unggah fixture gagal",
+                error: "Upload failed",
+                statusCode: "400",
+              },
+            });
+          return route.fulfill({ json: { Key: "playlist-covers/uploaded" } });
+        }
+        return route.fulfill({ contentType: "image/png", body: imageBytes });
+      }
       if (url.includes("/auth/v1/user")) return route.fulfill({ json: user });
       if (url.includes("/rest/v1/profiles"))
         return route.fulfill({
@@ -328,7 +350,72 @@ try {
     await detail
       .getByRole("heading", { name: "Playlist nyata uji", exact: true })
       .waitFor();
-    // Regression: overflow + transformed/isolated cards used to bury the menu.
+    // All playlist controls open modal popups, not panels below the toolbar.
+    const popup = page.locator(".playlist-action-dialog");
+    const closePopup = () =>
+      popup
+        .getByRole("button", { name: "Tutup pengaturan playlist", exact: true })
+        .click();
+    const openAction = async (name) => {
+      await detail
+        .getByRole("button", { name: "Opsi playlist", exact: true })
+        .click();
+      await popup.getByRole("button", { name, exact: true }).click();
+    };
+    for (const name of [
+      "Tambahkan",
+      "Edit",
+      "Nama & detail",
+      "Urutkan",
+      "Cari",
+      "Unduh playlist",
+      "Bagikan daftar lagu",
+      "Acak playlist",
+    ]) {
+      assert.equal(
+        await detail.getByRole("button", { name, exact: true }).count(),
+        0,
+        `${name} only available inside three-dot popup`
+      );
+    }
+    const assertPopup = async () => {
+      await popup.waitFor();
+      assert.equal(await popup.getAttribute("aria-modal"), "true");
+      assert.equal(
+        await popup.evaluate(
+          (el) => el.parentElement.parentElement === document.body
+        ),
+        true,
+        "popup escapes page stack"
+      );
+      assert.equal(
+        await page.locator("body").evaluate((el) => el.style.overflow),
+        "hidden"
+      );
+      assert.equal(
+        await popup.evaluate((el) => {
+          const b = el.getBoundingClientRect();
+          return (
+            b.top >= 0 &&
+            b.bottom <= innerHeight &&
+            b.left >= 0 &&
+            b.right <= innerWidth
+          );
+        }),
+        true,
+        "popup fits viewport"
+      );
+      assert.equal(
+        await popup.evaluate((el) => {
+          const b = el.getBoundingClientRect();
+          return el.contains(
+            document.elementFromPoint(b.x + b.width / 2, b.y + 20)
+          );
+        }),
+        true,
+        "popup is above the page"
+      );
+    };
     const more = detail.getByRole("button", {
       name: "More actions for Zebra",
       exact: true,
@@ -338,71 +425,28 @@ try {
       el.style.transform = "translateZ(0)";
       el.style.isolation = "isolate";
       el.querySelector(".playlist-track-list").style.overflow = "hidden";
-      const row = el.querySelector(".playlist-track-row");
-      row.style.height = "72px";
-      row.style.overflow = "hidden";
-      const next = row.nextElementSibling;
-      next.style.position = "relative";
-      next.style.zIndex = "80";
     });
+    const listTop = await detail
+      .getByTestId("user-playlist-tracks")
+      .evaluate((el) => el.getBoundingClientRect().top);
     await more.click();
     const actions = page.getByRole("dialog", {
       name: "Actions for Zebra",
       exact: true,
     });
-    await actions.waitFor();
+    await assertPopup();
     assert.equal(
-      await actions.evaluate((el) => el.parentElement === document.body),
-      true,
-      "menu escapes clipping ancestors"
+      await detail
+        .getByTestId("user-playlist-tracks")
+        .evaluate((el) => el.getBoundingClientRect().top),
+      listTop,
+      "opening song options inserts no inline panel"
     );
-    const assertMenuOnTop = async () => {
-      const result = await actions.evaluate((el) => {
-        const box = el.getBoundingClientRect();
-        const buttons = [...el.querySelectorAll("button")];
-        const reachable = buttons.filter((button) => {
-          const b = button.getBoundingClientRect();
-          return b.top >= box.top && b.bottom <= box.bottom;
-        });
-        return {
-          inside:
-            box.left >= 0 &&
-            box.right <= innerWidth &&
-            box.top >= 0 &&
-            box.bottom <= innerHeight,
-          onTop: reachable.every((button) => {
-            const b = button.getBoundingClientRect();
-            return button.contains(
-              document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)
-            );
-          }),
-          background: getComputedStyle(el).backgroundColor,
-        };
-      });
-      assert.equal(result.inside, true, "menu fits viewport");
-      assert.equal(
-        result.onTop,
-        true,
-        "following cards and fixed chrome cannot cover menu actions"
-      );
-      assert.ok(
-        !result.background.startsWith("rgba") ||
-          result.background.endsWith(", 1)"),
-        "menu is opaque"
-      );
-    };
-    await assertMenuOnTop();
-    await page.waitForFunction(() =>
-      document
-        .querySelector(".track-context-menu")
-        ?.contains(document.activeElement)
-    );
-    await page.keyboard.press("End");
-
-    await page.keyboard.press("ArrowUp");
+    await page.keyboard.press("Shift+Tab");
     assert.equal(
       await actions.evaluate((el) => el.contains(document.activeElement)),
-      true
+      true,
+      "popup traps focus"
     );
     await page.keyboard.press("Escape");
     await actions.waitFor({ state: "hidden" });
@@ -420,71 +464,103 @@ try {
     await page.setViewportSize({ width, height: 460 });
     await page.waitForFunction(() => {
       const b = document
-        .querySelector(".track-context-menu")
+        .querySelector(".playlist-action-dialog")
         ?.getBoundingClientRect();
-      return b && b.top >= 0 && b.bottom <= innerHeight;
+      return b && b.bottom <= innerHeight;
     });
-    await assertMenuOnTop();
-    await page.screenshot({ path: `.cache/track-menu-${width}-${theme}.png` });
-    await page.locator("body").dispatchEvent("pointerdown");
+    await assertPopup();
+    await page.screenshot({
+      path: `.cache/playlist-song-popup-${width}-${theme}.png`,
+    });
+    await page
+      .locator(".playlist-dialog-backdrop")
+      .click({ position: { x: 2, y: 2 } });
     await actions.waitFor({ state: "hidden" });
     await page.setViewportSize({ width, height: 900 });
     await detail.evaluate((el) => {
       el.style.transform = "";
       el.style.isolation = "";
       el.querySelector(".playlist-track-list").style.overflow = "";
-      const row = el.querySelector(".playlist-track-row");
-      row.style.height = "";
-      row.style.overflow = "";
-      row.nextElementSibling.style.position = "";
-      row.nextElementSibling.style.zIndex = "";
     });
+    await detail
+      .getByRole("button", { name: "Opsi playlist", exact: true })
+      .click();
+    await assertPopup();
+    await page.screenshot({
+      path: `.cache/playlist-options-popup-${width}-${theme}.png`,
+    });
+    await popup
+      .getByRole("button", { name: "Tambahkan lagu", exact: true })
+      .click();
+    await popup
+      .getByRole("heading", { name: "Tambahkan lagu", exact: true })
+      .waitFor();
+    await page.keyboard.press("Escape");
+    await popup.waitFor({ state: "hidden" });
+    assert.equal(
+      await detail
+        .getByRole("button", { name: "Opsi playlist", exact: true })
+        .evaluate((el) => document.activeElement === el),
+      true,
+      "switching popup views retains original opener"
+    );
     const ids = () =>
-      page
+      detail
+        .getByTestId("user-playlist-tracks")
         .locator(".playlist-track-row")
         .evaluateAll((rows) => rows.map((row) => row.dataset.trackId));
     assert.deepEqual(await ids(), ["playlist-b", "playlist-a", "playlist-c"]);
-    await detail
-      .getByRole("combobox", { name: "Urutkan lagu playlist" })
-      .selectOption("title");
+    await openAction("Urutkan lagu");
+    await assertPopup();
+    await popup.getByRole("button", { name: "Judul A–Z", exact: true }).click();
     assert.deepEqual(await ids(), ["playlist-a", "playlist-c", "playlist-b"]);
     assert.equal(saves, 0, "view sorting never writes to the server");
-    await detail
-      .getByRole("combobox", { name: "Urutkan lagu playlist" })
-      .selectOption("custom");
+    await openAction("Urutkan lagu");
+    await popup
+      .getByRole("button", { name: "Urutan saya", exact: true })
+      .click();
+    await openAction("Cari di playlist");
+    await popup
+      .getByRole("textbox", { name: "Filter playlist tracks" })
+      .fill("Alpha");
+    await popup
+      .getByRole("button", { name: "Tampilkan hasil", exact: true })
+      .click();
+    assert.deepEqual(await ids(), ["playlist-a", "playlist-c"]);
+    await openAction("Cari di playlist");
+    await popup
+      .getByRole("button", { name: "Hapus pencarian", exact: true })
+      .click();
+    await closePopup();
     await detail
       .getByRole("button", { name: "Putar Alpha", exact: true })
       .click();
     await page
       .getByRole("button", { name: "Open Now Playing for Alpha", exact: true })
       .waitFor();
-    await detail
-      .getByRole("button", { name: "Acak playlist", exact: true })
-      .click();
+    await openAction("Acak playlist");
     assert.equal(
-      await detail
+      await popup
         .getByRole("button", { name: "Acak playlist", exact: true })
         .getAttribute("aria-pressed"),
       "true"
     );
-    await detail
-      .getByRole("button", { name: "Bagikan daftar lagu", exact: true })
-      .click();
+    await closePopup();
+    await openAction("Bagikan daftar lagu");
     assert.match(
       await page.evaluate(() => window.__shared.text),
       /1\. Zebra — Beta/
     );
     assert.equal(saves, 0, "sharing never changes privacy");
-    await detail
-      .getByRole("button", { name: "Nama & detail", exact: true })
-      .click();
-    await detail
+    await closePopup();
+    await openAction("Edit nama & detail");
+    await popup
       .getByRole("textbox", { name: "Nama playlist", exact: true })
       .fill("Playlist tersimpan");
-    await detail
+    await popup
       .getByRole("button", { name: "Simpan detail", exact: true })
       .click();
-    await page.getByText("Menyimpan ke Supabase…", { exact: true }).waitFor();
+    await popup.getByText("Menyimpan ke Supabase…", { exact: true }).waitFor();
     await detail
       .getByRole("heading", { name: "Playlist nyata uji", exact: true })
       .waitFor();
@@ -492,14 +568,14 @@ try {
       .getByRole("heading", { name: "Playlist tersimpan", exact: true })
       .waitFor();
     assert.equal(saves, 1);
-    await detail
+    await popup
       .getByRole("button", { name: "Tutup pengaturan playlist", exact: true })
       .click();
-    await detail.getByRole("button", { name: "Edit", exact: true }).click();
-    await detail
+    await openAction("Edit lagu & urutan");
+    await popup
       .getByRole("button", { name: "Naikkan Alpha", exact: true })
       .click();
-    await page.getByText("Menyimpan ke Supabase…", { exact: true }).waitFor();
+    await popup.getByText("Menyimpan ke Supabase…", { exact: true }).waitFor();
     assert.deepEqual(
       await ids(),
       ["playlist-b", "playlist-a", "playlist-c"],
@@ -511,10 +587,10 @@ try {
         "playlist-a"
     );
     rejectSave = true;
-    await detail
+    await popup
       .getByRole("button", { name: "Remove Alpha from playlist", exact: true })
       .click();
-    await page
+    await popup
       .getByRole("alert")
       .filter({ hasText: "Konflik fixture" })
       .waitFor();
@@ -524,11 +600,9 @@ try {
       "failed removal keeps tracks"
     );
     rejectSave = false;
-    await detail.getByRole("button", { name: "Selesai", exact: true }).click();
-    await detail
-      .getByRole("button", { name: "Tambahkan", exact: true })
-      .click();
-    await detail
+    await popup.getByRole("button", { name: "Selesai", exact: true }).click();
+    await openAction("Tambahkan lagu");
+    await popup
       .getByRole("button", {
         name: "Tambahkan Delta ke playlist ini",
         exact: true,
@@ -537,16 +611,14 @@ try {
     await page.waitForFunction(
       () => document.querySelectorAll(".playlist-track-row").length === 4
     );
-    await detail
+    await popup
       .getByRole("button", { name: "Tutup pengaturan playlist", exact: true })
       .click();
-    await detail
-      .getByRole("button", { name: "Unduh playlist", exact: true })
-      .click();
-    await detail
+    await openAction("Unduh playlist");
+    await popup
       .getByRole("button", { name: "Unduh 4 lagu", exact: true })
       .waitFor();
-    await detail
+    await popup
       .getByRole("button", { name: "Tutup pengaturan playlist", exact: true })
       .click();
     const expandToast = page.getByRole("button", {
@@ -578,19 +650,101 @@ try {
       path: `.cache/user-playlist-${width}-${theme}.png`,
       fullPage: true,
     });
+    await openAction("Edit nama & detail");
+    const input = popup.getByLabel("Unggah foto cover playlist", {
+      exact: true,
+    });
+    await input.setInputFiles({
+      name: "unsafe.svg",
+      mimeType: "image/svg+xml",
+      buffer: Buffer.from("<svg/>"),
+    });
+    await popup.getByRole("alert").filter({ hasText: "JPG" }).waitFor();
+    assert.equal(uploads, 0);
+    await input.setInputFiles({
+      name: "cover.png",
+      mimeType: "image/png",
+      buffer: imageBytes,
+    });
+    await popup
+      .locator('img[alt="Preview cover playlist"][src^="blob:"]')
+      .waitFor();
+    const beforeCoverSaves = saves;
+    const previousCover = playlist.cover_url;
+    assert.equal(uploads, 0, "preview alone does not upload");
+    if (width === 320) {
+      rejectUpload = true;
+      await popup
+        .getByRole("button", { name: "Simpan detail", exact: true })
+        .click();
+      await popup
+        .getByRole("alert")
+        .filter({ hasText: "Unggah fixture gagal" })
+        .waitFor();
+      assert.equal(
+        saves,
+        beforeCoverSaves,
+        "upload failure must not write playlist"
+      );
+      rejectUpload = false;
+      rejectSave = true;
+      await popup
+        .getByRole("button", { name: "Simpan detail", exact: true })
+        .click();
+      await popup
+        .getByRole("alert")
+        .filter({ hasText: "Detail belum dikonfirmasi" })
+        .waitFor();
+      assert.equal(
+        playlist.cover_url,
+        previousCover,
+        "RPC failure leaves persisted cover unchanged"
+      );
+      rejectSave = false;
+    }
+    const beforeFinalUpload = uploads;
+    await popup
+      .getByRole("button", { name: "Simpan detail", exact: true })
+      .click();
+    await popup
+      .getByRole("button", { name: "Gunakan cover lagu pertama", exact: true })
+      .waitFor();
+    assert.match(
+      playlist.cover_url,
+      /^playlist-covers:11111111-1111-4111-8111-111111111111\/cover-.*\.webp$/
+    );
+    if (width === 320)
+      assert.equal(
+        uploads,
+        beforeFinalUpload,
+        "RPC retry reuses successful uploaded object"
+      );
+    await closePopup();
+    await detail.locator('img[src^="blob:"]').first().waitFor();
+    // Refetch the saved row, not just the editor's local preview.
+    const persistedCover = playlist.cover_url;
+    await page.reload({ waitUntil: "networkidle" });
+    await nav.getByRole("button", { name: "Library", exact: true }).click();
+    await page
+      .locator("main")
+      .getByText(playlist.name, { exact: true })
+      .click();
+    await detail.locator('img[src^="blob:"]').first().waitFor();
+    assert.equal(playlist.cover_url, persistedCover);
+    await page.screenshot({
+      path: `.cache/playlist-upload-${width}-${theme}.png`,
+    });
     if (width === 320) {
       const savedCalls = saves;
-      await detail
-        .getByRole("button", { name: "Nama & detail", exact: true })
-        .click();
-      await detail
+      await openAction("Edit nama & detail");
+      await popup
         .getByRole("textbox", { name: "Nama playlist", exact: true })
         .fill("Tidak boleh tersimpan offline");
       await context.setOffline(true);
-      await detail
+      await popup
         .getByRole("button", { name: "Simpan detail", exact: true })
         .click();
-      await page
+      await popup
         .getByRole("alert")
         .filter({ hasText: "Offline. Perubahan belum disimpan." })
         .waitFor();
@@ -635,7 +789,7 @@ try {
     }
     await context.close();
     console.log(
-      `PASS ${width}px ${theme}: portaled unclipped menu + keyboard/resize, playlist layout/actions, confirmed persistence, failure recovery, cold player shell, immediate/toast island`
+      `PASS ${width}px ${theme}: modal playlist options/add/edit/sort/search + song popup, keyboard/resize, playlist layout/actions, confirmed persistence, failure recovery, cold player shell, immediate/toast island`
     );
   }
   assert.deepEqual(errors, []);

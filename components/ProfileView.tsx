@@ -15,6 +15,7 @@ import {
 import { useAuth } from "./auth/AuthProvider";
 import { ProfileSocialControls } from "./FollowControls";
 import { VerifiedBadge } from "./auth/VerifiedBadge";
+import { ArtworkImage } from "./ArtworkImage";
 import { useMusic } from "./MusicProvider";
 import { supabase } from "@/lib/supabase";
 import {
@@ -377,7 +378,7 @@ function ProfileViewContent({ userId }: { userId: string }) {
               <article key={p.id} className="m3-card p-4 space-y-3">
                 <div className="flex gap-3 items-center">
                   {(p.cover_url || p.tracks[0]?.thumbnail) && (
-                    <img
+                    <ArtworkImage
                       src={p.cover_url || p.tracks[0].thumbnail}
                       alt=""
                       className="h-14 w-14 rounded-xl object-cover"
