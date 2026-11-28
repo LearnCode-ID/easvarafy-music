@@ -13,6 +13,7 @@ import type {
   LyricsAnimationStyle,
   LyricsTextPosition,
 } from '@/lib/metrolist/types';
+import { useLiteEffects, usePageVisible } from '@/lib/ui/useLiteEffects';
 import { cn } from '@/lib/utils';
 
 export interface SyncedLyricsViewProps {
@@ -79,6 +80,9 @@ export function SyncedLyricsView({
 
   const [isManualScrolling, setIsManualScrolling] = useState(false);
 
+  const lite = useLiteEffects();
+  const visible = usePageVisible();
+
   // Smooth 60fps interpolated playhead between YouTube player 250ms ticks
   const [rafTime, setRafTime] = useState<number | null>(null);
   const anchorTimeRef = useRef(currentTime);
@@ -90,7 +94,7 @@ export function SyncedLyricsView({
   }, [currentTime]);
 
   useEffect(() => {
-    if (!isPlaying || animationStyle === 'NONE') return;
+    if (!isPlaying || animationStyle === 'NONE' || lite || !visible) return;
     let rafId = 0;
     const step = (now: number) => {
       const elapsedSec = Math.max(0, (now - anchorPerfRef.current) / 1000);
@@ -101,10 +105,10 @@ export function SyncedLyricsView({
     };
     rafId = requestAnimationFrame(step);
     return () => cancelAnimationFrame(rafId);
-  }, [isPlaying, animationStyle, playbackRate]);
+  }, [isPlaying, animationStyle, playbackRate, lite, visible]);
 
   const smoothTime =
-    isPlaying && animationStyle !== 'NONE' && rafTime !== null && Math.abs(rafTime - currentTime) < 1.2
+    isPlaying && !lite && visible && animationStyle !== 'NONE' && rafTime !== null && Math.abs(rafTime - currentTime) < 1.2
       ? rafTime
       : currentTime;
 
@@ -143,7 +147,7 @@ export function SyncedLyricsView({
       target.offsetTop -
       container.clientHeight * (compact ? 0.34 : 0.42) +
       target.clientHeight / 2;
-    const behavior: ScrollBehavior = hasInitialScrolledRef.current
+    const behavior: ScrollBehavior = hasInitialScrolledRef.current && !lite
       ? 'smooth'
       : 'instant';
     hasInitialScrolledRef.current = true;
@@ -151,7 +155,7 @@ export function SyncedLyricsView({
       top: Math.max(0, targetTop),
       behavior,
     });
-  }, [activeIndex, autoScroll, isManualScrolling, compact]);
+  }, [activeIndex, autoScroll, isManualScrolling, compact, lite]);
 
   // Only treat genuine user wheel/touch drag gestures as manual scrolling (never programmatic scrollTo)
   const markManualScroll = () => {
@@ -256,7 +260,7 @@ export function SyncedLyricsView({
           const blurPx = computeProgressiveBlurPx({
             lineIndex: idx,
             activeIndex,
-            enabled: progressiveBlur,
+            enabled: progressiveBlur && !lite,
             isManualScrolling,
           });
 
@@ -395,20 +399,15 @@ export function LyricsSettingsPreview({
   neutralColor: boolean;
 }) {
   const [demoTime, setDemoTime] = useState(3.8);
+  const visible = usePageVisible();
+  const lite = useLiteEffects();
 
   useEffect(() => {
-    let rafId = 0;
-    const startPerf = performance.now();
-    const initialOffset = 3.2;
-
-    const tick = (now: number) => {
-      const elapsedSec = (now - startPerf) / 1000;
-      setDemoTime((initialOffset + elapsedSec) % 12);
-      rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, []);
+    if (!visible) return;
+    const started = performance.now();
+    const timer = window.setInterval(() => setDemoTime((3.2 + (performance.now() - started) / 1000) % 12), lite ? 250 : 50);
+    return () => window.clearInterval(timer);
+  }, [visible, lite]);
 
   // Scale preview font slightly so compact card stays legible on 360px phones
   const previewFontSize = Math.max(15, Math.min(24, Math.round(fontSize * 0.78)));

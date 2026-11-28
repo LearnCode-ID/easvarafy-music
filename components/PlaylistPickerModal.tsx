@@ -19,10 +19,10 @@ export function PlaylistPickerModal() {
 
   if (!playlistPickerTrack) return null;
 
-  const handleCreateAndAdd = (e: React.FormEvent) => {
+  const handleCreateAndAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
-    const created = createPlaylist(newName.trim(), '', [playlistPickerTrack]);
+    const created = await createPlaylist(newName.trim(), '', [playlistPickerTrack]);
     setNewName('');
     if (created) {
       openPlaylistPicker(null);

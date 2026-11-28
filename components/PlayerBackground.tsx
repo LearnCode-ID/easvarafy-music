@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useLiteEffects } from '@/lib/ui/useLiteEffects';
 import type { PlayerBackgroundStyle, ThemeMode } from '@/lib/metrolist/types';
 import { cn } from '@/lib/utils';
 
@@ -20,13 +21,19 @@ interface PlayerBackgroundProps {
  * - ANIMATED_GRADIENT: Gently breathing phase-shifting gradient wash
  * - LIQUID: Flowing multi-orb liquid artwork aurora mesh
  */
-export function PlayerBackground({
+export const PlayerBackground = React.memo(function PlayerBackground({
   style,
   thumbnail,
   isPlaying,
   theme,
 }: PlayerBackgroundProps) {
+  const lite = useLiteEffects();
   const isDark = theme === 'dark';
+
+  if (lite && style !== 'SOLID') return (
+    <div aria-hidden="true" data-testid="player-background" data-player-bg={style} data-player-bg-renderer="lite" className="pointer-events-none absolute inset-0"
+      style={{ background: 'radial-gradient(ellipse at 15% 0%, color-mix(in srgb, var(--ambient-a) 22%, transparent), transparent 65%), radial-gradient(ellipse at 95% 65%, color-mix(in srgb, var(--ambient-b) 14%, transparent), transparent 60%), var(--m3-bg)' }} />
+  );
 
   return (
     <div
@@ -40,7 +47,7 @@ export function PlayerBackground({
           className="absolute inset-0"
           style={{
             background:
-              'linear-gradient(180deg, color-mix(in srgb, var(--m3-primary) 7%, var(--m3-bg)) 0%, var(--m3-bg) 55%)',
+              'linear-gradient(180deg, color-mix(in srgb, var(--ambient-a) 7%, var(--m3-bg)) 0%, var(--m3-bg) 55%)',
           }}
         />
       )}
@@ -50,8 +57,8 @@ export function PlayerBackground({
           className="absolute inset-0 transition-colors duration-700"
           style={{
             background: isDark
-              ? 'linear-gradient(180deg, color-mix(in srgb, var(--m3-primary) 34%, #0B0D12) 0%, color-mix(in srgb, var(--m3-primary) 16%, var(--m3-bg)) 48%, var(--m3-bg) 100%)'
-              : 'linear-gradient(180deg, color-mix(in srgb, var(--m3-primary) 24%, #FFFFFF) 0%, color-mix(in srgb, var(--m3-primary) 10%, var(--m3-bg)) 52%, var(--m3-bg) 100%)',
+              ? 'linear-gradient(180deg, color-mix(in srgb, var(--ambient-a) 34%, #0B0D12) 0%, color-mix(in srgb, var(--ambient-a) 16%, var(--m3-bg)) 48%, var(--m3-bg) 100%)'
+              : 'linear-gradient(180deg, color-mix(in srgb, var(--ambient-a) 24%, #FFFFFF) 0%, color-mix(in srgb, var(--ambient-a) 10%, var(--m3-bg)) 52%, var(--m3-bg) 100%)',
           }}
         />
       )}
@@ -65,8 +72,8 @@ export function PlayerBackground({
             )}
             style={{
               backgroundImage: isDark
-                ? 'radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--m3-primary) 42%, transparent) 0%, transparent 55%), radial-gradient(circle at 82% 28%, color-mix(in srgb, var(--m3-primary-container) 48%, transparent) 0%, transparent 58%), radial-gradient(circle at 50% 85%, color-mix(in srgb, var(--m3-primary) 26%, transparent) 0%, transparent 60%)'
-                : 'radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--m3-primary) 26%, transparent) 0%, transparent 55%), radial-gradient(circle at 82% 28%, color-mix(in srgb, var(--m3-primary-container) 42%, transparent) 0%, transparent 58%), radial-gradient(circle at 50% 85%, color-mix(in srgb, var(--m3-primary) 18%, transparent) 0%, transparent 60%)',
+                ? 'radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--ambient-a) 42%, transparent) 0%, transparent 55%), radial-gradient(circle at 82% 28%, color-mix(in srgb, var(--ambient-b) 48%, transparent) 0%, transparent 58%), radial-gradient(circle at 50% 85%, color-mix(in srgb, var(--ambient-a) 26%, transparent) 0%, transparent 60%)'
+                : 'radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--ambient-a) 26%, transparent) 0%, transparent 55%), radial-gradient(circle at 82% 28%, color-mix(in srgb, var(--ambient-b) 42%, transparent) 0%, transparent 58%), radial-gradient(circle at 50% 85%, color-mix(in srgb, var(--ambient-a) 18%, transparent) 0%, transparent 60%)',
             }}
           />
           <div
@@ -123,8 +130,8 @@ export function PlayerBackground({
             )}
             style={{
               background: isDark
-                ? 'radial-gradient(circle, color-mix(in srgb, var(--m3-primary) 54%, transparent) 0%, transparent 70%)'
-                : 'radial-gradient(circle, color-mix(in srgb, var(--m3-primary) 34%, transparent) 0%, transparent 70%)',
+                ? 'radial-gradient(circle, color-mix(in srgb, var(--ambient-a) 54%, transparent) 0%, transparent 70%)'
+                : 'radial-gradient(circle, color-mix(in srgb, var(--ambient-a) 34%, transparent) 0%, transparent 70%)',
             }}
           />
           <div
@@ -134,8 +141,8 @@ export function PlayerBackground({
             )}
             style={{
               background: isDark
-                ? 'radial-gradient(circle, color-mix(in srgb, var(--m3-primary-container) 62%, #4338CA 20%) 0%, transparent 72%)'
-                : 'radial-gradient(circle, color-mix(in srgb, var(--m3-primary-container) 54%, #6366F1 14%) 0%, transparent 72%)',
+                ? 'radial-gradient(circle, color-mix(in srgb, var(--ambient-b) 62%, #4338CA 20%) 0%, transparent 72%)'
+                : 'radial-gradient(circle, color-mix(in srgb, var(--ambient-b) 54%, #6366F1 14%) 0%, transparent 72%)',
             }}
           />
           {/* Legibility scrim */}
@@ -151,4 +158,4 @@ export function PlayerBackground({
       )}
     </div>
   );
-}
+});

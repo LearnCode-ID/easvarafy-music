@@ -1,9 +1,9 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 /**
- * Supabase is used ONLY for authentication + the `profiles` table
- * (user identity & role). Songs, banners, covers and lyrics keep using the
- * existing ytmusic-api routes — nothing about the music source changed.
+ * Supabase stores authentication, profiles/private profile media, daily streaks
+ * and personal playlists/likes. The music catalogue, audio and lyrics continue
+ * to use the existing music API; no local catalogue FK is required for tracks.
  */
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const supabaseAnonKey =
