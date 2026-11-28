@@ -10,6 +10,7 @@ import {
   Search,
   Settings,
   Trophy,
+  UserRound,
 } from 'lucide-react';
 import { useMusic } from './MusicProvider';
 import { SidebarAccount } from './auth/AccountMenu';
@@ -22,6 +23,7 @@ const NAV_ITEMS: Array<{ id: NavTab; label: string; icon: React.ComponentType<{ 
   { id: 'search', label: 'Search', icon: Search },
   { id: 'charts', label: 'Explore', icon: Compass },
   { id: 'library', label: 'Library', icon: Library },
+  { id: 'profile', label: 'Profil', icon: UserRound },
   { id: 'listeners', label: 'Top Pendengar', icon: Trophy },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
@@ -39,7 +41,7 @@ export function Sidebar() {
   return (
     <aside
       aria-label="Primary navigation"
-      className="hidden lg:flex flex-col w-64 shrink-0 h-[calc(100vh-2rem)] sticky top-4 ml-4 my-4 rounded-3xl liquid-glass p-4 justify-between"
+      className="glass-sidebar hidden lg:flex flex-col w-64 shrink-0 h-[calc(100vh-2rem)] sticky top-4 ml-4 my-4 rounded-3xl liquid-glass p-4 justify-between"
     >
       <div className="flex flex-col gap-6 min-h-0 flex-1">
         {/* Brand Wordmark */}
@@ -62,6 +64,7 @@ export function Sidebar() {
             return (
               <button
                 key={item.id}
+                aria-current={isActive ? 'page' : undefined}
                 type="button"
                 onClick={() => setActiveTab(item.id)}
                 className={cn(
@@ -86,10 +89,9 @@ export function Sidebar() {
             </span>
             <button
               type="button"
-              onClick={() => {
-                const pl = createPlaylist(`Mix #${playlists.length + 1}`);
-                setActiveTab('library');
-                openDetail({ kind: 'user-playlist', id: pl.id });
+              onClick={async () => {
+                const pl = await createPlaylist(`Mix #${playlists.length + 1}`);
+                if (pl) { setActiveTab('library'); openDetail({ kind: 'user-playlist', id: pl.id }); }
               }}
               aria-label="New playlist"
               className="w-7 h-7 rounded-full flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"

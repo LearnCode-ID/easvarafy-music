@@ -46,7 +46,7 @@ export function MiniPlayer() {
           className={`relative overflow-hidden px-3.5 py-2 flex items-center gap-3 ${
             isLiquidGlass
               ? 'rounded-full'
-              : 'rounded-[22px] metro-surface shadow-xl'
+              : 'glass-mini glass-surface'
           }`}
         >
           {isLiquidGlass && (

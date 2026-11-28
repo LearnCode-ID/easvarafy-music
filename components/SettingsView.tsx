@@ -1,5 +1,6 @@
 'use client';
 
+import { PersonalizationSettings } from './PersonalizationSettings';
 import React, { useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -48,6 +49,7 @@ import {
   X,
 } from 'lucide-react';
 import { useMusic } from './MusicProvider';
+import { hasNativeDownloads, getWifiOnly, setWifiOnly } from '@/lib/native/downloads';
 import { clearAllDownloads, formatBytes, getOfflineStorageUsage } from '@/lib/metrolist/offlineAudio';
 import { useOfflineLibrary } from '@/lib/metrolist/useOfflineLibrary';
 import { AccountSettingsSection } from './AccountSettingsSection';
@@ -280,17 +282,19 @@ function OfflineDownloadsSettings() {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [quota, setQuota] = useState<number | null>(null);
-  const activeJobs = queue.order.length;
+  const activeJobs = queue.order.filter(id => ['queued','downloading','saving'].includes(queue.jobs[id]?.status)).length;
+  const [wifiOnly, updateWifiOnly] = useState(false);
+  React.useEffect(() => { queueMicrotask(() => updateWifiOnly(getWifiOnly())); }, []);
 
   React.useEffect(() => {
     let alive = true;
     void getOfflineStorageUsage().then((u) => {
       if (alive) setQuota(u.quotaBytes);
-    });
+    }).catch(() => showToast('Penggunaan penyimpanan tidak dapat dibaca.'));
     return () => {
       alive = false;
     };
-  }, [records.length]);
+  }, [records.length, showToast]);
 
   return (
     <>
@@ -307,6 +311,14 @@ function OfflineDownloadsSettings() {
           </span>
         }
       />
+      {hasNativeDownloads() && <PreferenceRow
+        icon={Download}
+        title="Unduh hanya lewat Wi-Fi"
+        description="Diperiksa saat transfer dimulai dan selama menerima data. Tidak melanjutkan otomatis."
+        trailing={<button type="button" role="switch" aria-checked={wifiOnly}
+          className="px-3.5 h-8 rounded-full text-xs bg-[var(--m3-primary-soft)] text-[var(--m3-primary)]"
+          onClick={() => { setWifiOnly(!wifiOnly); updateWifiOnly(!wifiOnly); }}>{wifiOnly ? 'Aktif' : 'Nonaktif'}</button>}
+      />}
       <PreferenceRow
         icon={Trash2}
         title="Hapus Semua Unduhan"
@@ -530,7 +542,7 @@ export function SettingsView() {
     if (!file) return;
     try {
       const text = await file.text();
-      const result = importLibraryBackup(text);
+      const result = await importLibraryBackup(text);
       if (!result.ok) {
         showToast(result.message);
       }
@@ -694,7 +706,7 @@ export function SettingsView() {
                 <div className="min-w-0">
                   <p className="text-[14.5px] font-semibold">Navigation Bar Style</p>
                   <p className="text-[12.5px] opacity-60">
-                    Liquid Glass (floating &amp; slide) or Default (lightweight for older Android)
+                    Default (CSS glass) atau Liquid Glass (optical refraction &amp; slide)
                   </p>
                 </div>
               </div>
@@ -704,7 +716,7 @@ export function SettingsView() {
                   data-testid="dock-style-default"
                   onClick={() => {
                     updateSettings({ dockStyle: 'default' });
-                    showToast('Navigation bar: Default (lightweight)');
+                    showToast('Navigation bar: Default (CSS glass)');
                   }}
                   className={`h-8 rounded-full text-[12.5px] font-semibold flex items-center justify-center gap-1.5 transition-all ${
                     settings.dockStyle !== 'liquid-glass'
@@ -1728,6 +1740,8 @@ export function SettingsView() {
                 })}
               </div>
             </div>
+
+            <PersonalizationSettings />
 
             {/* Auto-Continue Radio */}
             <PreferenceRow

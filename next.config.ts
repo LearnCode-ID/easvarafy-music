@@ -12,6 +12,8 @@ const isStaticExport = process.env.NEXT_STATIC_EXPORT === 'true';
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   devIndicators: false,
+  // Arena live previews use a proxied host rather than localhost.
+  allowedDevOrigins: ['*.e2b.app'],
   typescript: {
     ignoreBuildErrors: false,
   },

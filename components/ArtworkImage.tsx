@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Music2 } from 'lucide-react';
+import { useOnlineStatus } from '@/lib/metrolist/useOfflineLibrary';
 import { cn } from '@/lib/utils';
 import {
   findDownloadedByArtwork,
@@ -38,6 +39,7 @@ export function ArtworkImage({
   rounded = 'rounded-xl',
   sizeHint = 'md',
 }: ArtworkImageProps) {
+  const online = useOnlineStatus();
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
 
@@ -49,7 +51,7 @@ export function ArtworkImage({
   const [offlineArt, setOfflineArt] = useState<{ for: string; url: string } | null>(null);
   const remoteFailed = !!rawSrc && failedSrc === rawSrc;
   useEffect(() => {
-    if (!remoteFailed || !rawSrc) return;
+    if ((!remoteFailed && online) || !rawSrc) return;
     const record = findDownloadedByArtwork(rawSrc);
     if (!record?.localThumbUri) return;
     let cancelled = false;
@@ -61,9 +63,10 @@ export function ArtworkImage({
     return () => {
       cancelled = true;
     };
-  }, [remoteFailed, rawSrc]);
+  }, [remoteFailed, rawSrc, online]);
   const src: string | null | undefined =
-    remoteFailed && offlineArt && offlineArt.for === rawSrc ? offlineArt.url : rawSrc;
+    (remoteFailed || !online) && offlineArt && offlineArt.for === rawSrc ? offlineArt.url
+      : !online && /^https?:\/\//i.test(rawSrc || '') ? null : rawSrc;
 
   const isFailed = !src || failedSrc === src;
   const isLoaded = !!src && loadedSrc === src;

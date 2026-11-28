@@ -40,7 +40,7 @@ export default function AdminDashboardPage() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => { void load(); });
   }, [load]);
 
   return (

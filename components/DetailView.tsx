@@ -18,7 +18,9 @@ import { ArtworkImage } from './ArtworkImage';
 import { useMusic } from './MusicProvider';
 import { DetailViewSkeleton } from './Skeletons';
 import { TrackContextMenu } from './TrackContextMenu';
-import { DownloadButton } from './DownloadButton';
+import { DownloadButton, OfflineAvailability } from './DownloadButton';
+import { BlendDetailView } from './BlendDetailView';
+import { PlaylistEditor } from './PlaylistEditor';
 import { UserProfileDetail } from './UserProfileDetail';
 import { formatDuration } from '@/lib/metrolist/lyrics';
 import {
@@ -70,6 +72,7 @@ export function DetailView() {
     if (
       !detailTarget ||
       detailTarget.kind === 'user-playlist' ||
+      detailTarget.kind === 'blend' ||
       detailTarget.kind === 'user-profile'
     ) {
       return;
@@ -129,6 +132,8 @@ export function DetailView() {
 
   if (!detailTarget) return null;
 
+  if (detailTarget.kind === 'blend') return <BlendDetailView blendId={detailTarget.id} />;
+
   if (detailTarget.kind === 'user-profile') {
     return <UserProfileDetail userId={detailTarget.id} />;
   }
@@ -159,7 +164,7 @@ export function DetailView() {
     return (
       <div data-testid="detail-view" className="space-y-6 pb-36">
         {/* Immersive Adaptive Artwork Hero Banner */}
-        <section className="relative overflow-hidden rounded-[32px] metro-surface p-5 sm:p-7">
+        <section className="glass-playlist-hero relative overflow-hidden rounded-[32px] metro-surface p-5 sm:p-7">
           {cover && (
             <>
               <img
@@ -348,6 +353,7 @@ export function DetailView() {
             </div>
           </div>
         </section>
+        <PlaylistEditor key={userPlaylist.id} playlist={userPlaylist} />
 
         {/* In-List Quick Filter */}
         {userPlaylist.tracks.length > 0 && (
@@ -383,7 +389,7 @@ export function DetailView() {
             No tracks match &ldquo;{trackFilter}&rdquo;.
           </div>
         ) : (
-          <div className="rounded-[28px] metro-surface divide-y divide-black/5 dark:divide-white/[0.06]">
+          <div className="glass-song-list rounded-[28px] metro-surface divide-y divide-black/5 dark:divide-white/[0.06]">
             {filteredTracks.map((track, idx) => {
               const active = currentTrack?.videoId === track.videoId;
               return (
@@ -444,6 +450,7 @@ export function DetailView() {
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
+                  <OfflineAvailability track={track} />
                   <DownloadButton track={track} />
                   <TrackContextMenu track={track} />
                 </div>
@@ -491,7 +498,7 @@ export function DetailView() {
       ) : remote ? (
         <>
           {/* Immersive Adaptive Blurred Artwork Hero */}
-          <section className="relative overflow-hidden rounded-[32px] metro-surface p-5 sm:p-7">
+          <section className="glass-playlist-hero relative overflow-hidden rounded-[32px] metro-surface p-5 sm:p-7">
             {thumb && (
               <>
                 <img
@@ -632,7 +639,7 @@ export function DetailView() {
 
           {/* Tracks */}
           {filteredTracks.length > 0 && (
-            <div className="rounded-[28px] metro-surface divide-y divide-black/5 dark:divide-white/[0.06]">
+            <div className="glass-song-list rounded-[28px] metro-surface divide-y divide-black/5 dark:divide-white/[0.06]">
               {filteredTracks.map((track, idx) => {
                 const active = currentTrack?.videoId === track.videoId;
                 return (
@@ -682,7 +689,8 @@ export function DetailView() {
                         </p>
                       </div>
                     </button>
-                    <DownloadButton track={track} />
+                    <OfflineAvailability track={track} />
+                  <DownloadButton track={track} />
                     <TrackContextMenu track={track} />
                   </div>
                 );

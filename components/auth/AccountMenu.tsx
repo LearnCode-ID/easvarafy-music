@@ -47,7 +47,7 @@ function ProfileLibraryButton({
       onClick={() => {
         onNavigate?.();
         openDetail(null);
-        setActiveTab('library');
+        setActiveTab('profile');
       }}
       className={cn(
         'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm hover:bg-black/5 dark:hover:bg-white/10',
@@ -55,7 +55,7 @@ function ProfileLibraryButton({
       )}
     >
       <UserIcon className="w-4 h-4" />
-      Profil &amp; Library
+      Profil
     </button>
   );
 }

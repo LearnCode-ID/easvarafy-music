@@ -1,3 +1,5 @@
+import { downloadFetch } from '@/lib/server/downloadFetch';
+import { detectAudioFormat } from '@/lib/metrolist/audioValidation';
 import { NextRequest, NextResponse } from 'next/server';
 import { CORS_HEADERS } from '@/lib/server/cors';
 import {
@@ -13,11 +15,11 @@ export const maxDuration = 60;
 
 /**
  * GET /api/music/audio?videoId=...&title=...&artist=...
- *   -> streams the audio file (Range supported) with CORS headers so the web
+ *   -> streams the complete audio file (no resume) with CORS headers so the web
  *      app / APK can download it with progress tracking.
  * GET /api/music/audio?videoId=...&resolve=1
- *   -> JSON { ok, url, contentType, contentLength, source } so clients can
- *      download straight from a CORS-enabled CDN (no proxy hop).
+ *   -> JSON download entitlement and type/size hints (never a raw provider URL).
+ *      Actual transfers always resolve the configured source again.
  *
  * See lib/server/audioSource.ts for how sources are configured.
  */
@@ -48,6 +50,11 @@ async function resolveFromRequest(req: NextRequest): Promise<
   { ok: true; source: ResolvedAudioSource } | { ok: false; response: NextResponse }
 > {
   const { searchParams } = new URL(req.url);
+  const provider = searchParams.get('provider') || 'youtube';
+  if (provider !== 'youtube') return { ok: false, response: jsonError(422, 'unsupported_provider', 'Provider ini belum memiliki adaptor unduh resmi di Easvarafy.') };
+  if (process.env.AUDIO_DOWNLOADS_ENABLED !== 'true') {
+    return { ok: false, response: jsonError(403, 'streaming_only', 'Lagu hanya tersedia untuk streaming. Sumber unduhan berizin belum diaktifkan oleh pengelola.') };
+  }
   const videoId = sanitizeVideoId(searchParams.get('videoId'));
   if (!videoId) {
     return { ok: false, response: jsonError(400, 'invalid_video_id', 'ID lagu tidak valid.') };
@@ -55,8 +62,8 @@ async function resolveFromRequest(req: NextRequest): Promise<
   const candidates = buildAudioSourceCandidates(
     videoId,
     {
-      title: searchParams.get('title') ?? undefined,
-      artist: searchParams.get('artist') ?? undefined,
+      title: searchParams.get('title')?.slice(0, 300) ?? undefined,
+      artist: searchParams.get('artist')?.slice(0, 300) ?? undefined,
     },
     {
       AUDIO_SOURCE_URL_TEMPLATE: process.env.AUDIO_SOURCE_URL_TEMPLATE,
@@ -86,7 +93,7 @@ export async function HEAD(req: NextRequest) {
   const headers: Record<string, string> = {
     ...AUDIO_CORS_HEADERS,
     'Content-Type': resolved.source.contentType,
-    'Accept-Ranges': 'bytes',
+    'Accept-Ranges': 'none',
     'X-Audio-Source': resolved.source.label,
   };
   if (resolved.source.contentLength) {
@@ -97,6 +104,7 @@ export async function HEAD(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  if (req.headers.has('range')) return jsonError(416, 'partial_not_supported', 'Unduhan memerlukan file audio lengkap; resume belum didukung.');
   const resolved = await resolveFromRequest(req);
   if (!resolved.ok) return resolved.response;
   const { source } = resolved;
@@ -106,7 +114,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         ok: true,
-        url: source.url,
+        downloadAllowed: true,
         contentType: source.contentType,
         contentLength: source.contentLength,
         source: source.label,
@@ -121,17 +129,18 @@ export async function GET(req: NextRequest) {
 
   let upstream: Response;
   try {
-    upstream = await fetch(source.url, {
+    upstream = await downloadFetch(source.url, {
       headers: upstreamHeaders,
-      redirect: 'follow',
+      redirect: 'error',
       signal: AbortSignal.timeout(55_000),
     });
   } catch {
     return jsonError(502, 'audio_upstream_failed', 'Server audio tidak merespons. Coba lagi nanti.');
   }
   if (!upstream.ok || !upstream.body) {
+    await upstream.body?.cancel().catch(() => {});
     return jsonError(
-      upstream.status === 404 ? 404 : 502,
+      [401, 403, 404, 429].includes(upstream.status) ? upstream.status : 502,
       'audio_upstream_failed',
       upstream.status === 404 ? UNAVAILABLE_MESSAGE : 'Gagal mengambil file audio dari server.'
     );
@@ -142,8 +151,9 @@ export async function GET(req: NextRequest) {
     'Content-Type': upstream.headers.get('content-type')?.includes('octet-stream')
       ? source.contentType
       : upstream.headers.get('content-type') ?? source.contentType,
-    'Accept-Ranges': 'bytes',
-    'Cache-Control': 'public, max-age=3600',
+    'Accept-Ranges': 'none',
+    'Cache-Control': 'no-store',
+    'Content-Disposition': `attachment; filename="${sanitizeVideoId(searchParams.get('videoId'))}.audio"`,
     'X-Audio-Source': source.label,
   };
   for (const name of ['content-length', 'content-range']) {
@@ -154,5 +164,40 @@ export async function GET(req: NextRequest) {
   const knownLength = upstream.headers.get('content-length') ?? (source.contentLength ? String(source.contentLength) : null);
   if (knownLength && upstream.status === 200) headers['X-Audio-Length'] = knownLength;
 
-  return new NextResponse(upstream.body, { status: upstream.status, headers });
+  // Validate the actual GET body before exposing it as audio. Ranged playback
+  // is unnecessary for downloads; refuse partial requests rather than blessing
+  // arbitrary middle bytes as a complete file.
+  if (range || upstream.status !== 200) { await upstream.body.cancel(); return jsonError(416, 'partial_not_supported', 'Unduhan memerlukan file audio lengkap.'); }
+  const reader = upstream.body.getReader();
+  const prefix: Uint8Array[] = [];
+  let prefixSize = 0;
+  try {
+    while (prefixSize < 64) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      prefix.push(value); prefixSize += value.length;
+    }
+  } catch { await reader.cancel().catch(() => {}); return jsonError(502, 'interrupted', 'Koneksi sumber audio terputus.'); }
+  const first = new Uint8Array(prefixSize);
+  let offset = 0;
+  for (const chunk of prefix) { first.set(chunk, offset); offset += chunk.length; }
+  const format = detectAudioFormat(first);
+  const actualType = upstream.headers.get('content-type') || '';
+  if (!format || /text\/|json|mpegurl|dash\+xml/i.test(actualType)) {
+    await reader.cancel();
+    return jsonError(422, 'unsupported_audio', 'Sumber bukan file audio tunggal yang didukung. Halaman error, manifest, dan format tidak dikenal tidak disimpan.');
+  }
+  headers['Content-Type'] = format.mimeType;
+  headers['Content-Disposition'] = `attachment; filename="${sanitizeVideoId(searchParams.get('videoId'))}.${format.extension}"`;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) { for (const chunk of prefix) controller.enqueue(chunk); },
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) controller.close(); else controller.enqueue(value);
+      } catch (err) { controller.error(err); }
+    },
+    cancel(reason) { return reader.cancel(reason); },
+  });
+  return new NextResponse(stream, { status: 200, headers });
 }

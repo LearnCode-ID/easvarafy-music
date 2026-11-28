@@ -1,5 +1,6 @@
 'use client';
 
+import { ProfileAvatar } from './ProfileAvatar';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, Crown, Headphones, ListMusic, Trophy } from 'lucide-react';
 import { useMusic } from './MusicProvider';
@@ -29,9 +30,9 @@ export function HomeTopListenersSection() {
       setLoading(false);
     };
     void load();
-    return () => {
-      active = false;
-    };
+    const timer = setInterval(() => void load(),30000);
+    window.addEventListener('focus',load);
+    return () => { active = false; clearInterval(timer); window.removeEventListener('focus',load); };
   }, [monthKey]);
 
   if (!loading && listeners.length === 0) {
@@ -101,11 +102,9 @@ export function HomeTopListenersSection() {
                 <div className="flex items-center gap-3">
                   <div className="relative shrink-0">
                     {entry.avatar_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={entry.avatar_url}
-                        alt={entry.name}
-                        referrerPolicy="no-referrer"
+                      <ProfileAvatar
+                        reference={entry.avatar_url}
+                        name={entry.name}
                         className="h-11 w-11 rounded-full object-cover ring-2 ring-white/10"
                       />
                     ) : (

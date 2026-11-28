@@ -40,7 +40,7 @@ export function PlayerBackground({
           className="absolute inset-0"
           style={{
             background:
-              'linear-gradient(180deg, color-mix(in srgb, var(--m3-primary) 7%, var(--m3-bg)) 0%, var(--m3-bg) 55%)',
+              'linear-gradient(180deg, color-mix(in srgb, var(--ambient-a) 7%, var(--m3-bg)) 0%, var(--m3-bg) 55%)',
           }}
         />
       )}
@@ -50,8 +50,8 @@ export function PlayerBackground({
           className="absolute inset-0 transition-colors duration-700"
           style={{
             background: isDark
-              ? 'linear-gradient(180deg, color-mix(in srgb, var(--m3-primary) 34%, #0B0D12) 0%, color-mix(in srgb, var(--m3-primary) 16%, var(--m3-bg)) 48%, var(--m3-bg) 100%)'
-              : 'linear-gradient(180deg, color-mix(in srgb, var(--m3-primary) 24%, #FFFFFF) 0%, color-mix(in srgb, var(--m3-primary) 10%, var(--m3-bg)) 52%, var(--m3-bg) 100%)',
+              ? 'linear-gradient(180deg, color-mix(in srgb, var(--ambient-a) 34%, #0B0D12) 0%, color-mix(in srgb, var(--ambient-a) 16%, var(--m3-bg)) 48%, var(--m3-bg) 100%)'
+              : 'linear-gradient(180deg, color-mix(in srgb, var(--ambient-a) 24%, #FFFFFF) 0%, color-mix(in srgb, var(--ambient-a) 10%, var(--m3-bg)) 52%, var(--m3-bg) 100%)',
           }}
         />
       )}
@@ -65,8 +65,8 @@ export function PlayerBackground({
             )}
             style={{
               backgroundImage: isDark
-                ? 'radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--m3-primary) 42%, transparent) 0%, transparent 55%), radial-gradient(circle at 82% 28%, color-mix(in srgb, var(--m3-primary-container) 48%, transparent) 0%, transparent 58%), radial-gradient(circle at 50% 85%, color-mix(in srgb, var(--m3-primary) 26%, transparent) 0%, transparent 60%)'
-                : 'radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--m3-primary) 26%, transparent) 0%, transparent 55%), radial-gradient(circle at 82% 28%, color-mix(in srgb, var(--m3-primary-container) 42%, transparent) 0%, transparent 58%), radial-gradient(circle at 50% 85%, color-mix(in srgb, var(--m3-primary) 18%, transparent) 0%, transparent 60%)',
+                ? 'radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--ambient-a) 42%, transparent) 0%, transparent 55%), radial-gradient(circle at 82% 28%, color-mix(in srgb, var(--ambient-b) 48%, transparent) 0%, transparent 58%), radial-gradient(circle at 50% 85%, color-mix(in srgb, var(--ambient-a) 26%, transparent) 0%, transparent 60%)'
+                : 'radial-gradient(circle at 22% 18%, color-mix(in srgb, var(--ambient-a) 26%, transparent) 0%, transparent 55%), radial-gradient(circle at 82% 28%, color-mix(in srgb, var(--ambient-b) 42%, transparent) 0%, transparent 58%), radial-gradient(circle at 50% 85%, color-mix(in srgb, var(--ambient-a) 18%, transparent) 0%, transparent 60%)',
             }}
           />
           <div
@@ -123,8 +123,8 @@ export function PlayerBackground({
             )}
             style={{
               background: isDark
-                ? 'radial-gradient(circle, color-mix(in srgb, var(--m3-primary) 54%, transparent) 0%, transparent 70%)'
-                : 'radial-gradient(circle, color-mix(in srgb, var(--m3-primary) 34%, transparent) 0%, transparent 70%)',
+                ? 'radial-gradient(circle, color-mix(in srgb, var(--ambient-a) 54%, transparent) 0%, transparent 70%)'
+                : 'radial-gradient(circle, color-mix(in srgb, var(--ambient-a) 34%, transparent) 0%, transparent 70%)',
             }}
           />
           <div
@@ -134,8 +134,8 @@ export function PlayerBackground({
             )}
             style={{
               background: isDark
-                ? 'radial-gradient(circle, color-mix(in srgb, var(--m3-primary-container) 62%, #4338CA 20%) 0%, transparent 72%)'
-                : 'radial-gradient(circle, color-mix(in srgb, var(--m3-primary-container) 54%, #6366F1 14%) 0%, transparent 72%)',
+                ? 'radial-gradient(circle, color-mix(in srgb, var(--ambient-b) 62%, #4338CA 20%) 0%, transparent 72%)'
+                : 'radial-gradient(circle, color-mix(in srgb, var(--ambient-b) 54%, #6366F1 14%) 0%, transparent 72%)',
             }}
           />
           {/* Legibility scrim */}

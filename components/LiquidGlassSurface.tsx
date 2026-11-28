@@ -427,7 +427,7 @@ export function LiquidGlassBackdropLayer({
       }
       className={cn(
         'pointer-events-none absolute inset-0 rounded-full',
-        isSvgActive ? svgActiveClass : fallbackClass,
+        isSvgActive ? svgActiveClass : `${fallbackClass} glass-surface`,
         className
       )}
     />

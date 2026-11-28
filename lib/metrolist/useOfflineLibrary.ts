@@ -1,5 +1,7 @@
 'use client';
 
+import { downloadKey } from './offlineQueue';
+import type { Track } from './types';
 import { useEffect, useSyncExternalStore } from 'react';
 import {
   ensureOfflineLibraryLoaded,
@@ -13,26 +15,29 @@ import {
 export function useOfflineLibrary(): OfflineSnapshot {
   const snap = useSyncExternalStore(subscribeOffline, getOfflineSnapshot, getOfflineServerSnapshot);
   useEffect(() => {
-    void ensureOfflineLibraryLoaded();
+    void ensureOfflineLibraryLoaded().catch(() => {});
   }, []);
   return snap;
 }
 
 export type OfflineTrackState =
   | { kind: 'idle' }
+  | { kind: 'cancelled' }
   | { kind: 'queued' }
   | { kind: 'downloading'; progress: number | null }
   | { kind: 'saving' }
   | { kind: 'error'; message: string }
   | { kind: 'downloaded'; fileSizeBytes: number };
 
-export function offlineStateFor(snap: OfflineSnapshot, videoId: string | null | undefined): OfflineTrackState {
+export function offlineStateFor(snap: OfflineSnapshot, videoId: string | Pick<Track, 'videoId' | 'provider'> | null | undefined): OfflineTrackState {
   if (!videoId) return { kind: 'idle' };
-  const record = snap.byId.get(videoId);
+  const key = downloadKey(videoId);
+  const record = snap.byId.get(key);
   if (record) return { kind: 'downloaded', fileSizeBytes: record.fileSizeBytes };
-  const job = snap.queue.jobs[videoId];
+  const job = snap.queue.jobs[key];
   if (!job) return { kind: 'idle' };
   switch (job.status) {
+    case 'cancelled': return { kind: 'cancelled' };
     case 'queued':
       return { kind: 'queued' };
     case 'downloading':
@@ -45,7 +50,7 @@ export function offlineStateFor(snap: OfflineSnapshot, videoId: string | null | 
 }
 
 /** Download state of one song. */
-export function useOfflineTrackState(videoId: string | null | undefined): OfflineTrackState {
+export function useOfflineTrackState(videoId: string | Pick<Track, 'videoId' | 'provider'> | null | undefined): OfflineTrackState {
   return offlineStateFor(useOfflineLibrary(), videoId);
 }
 
