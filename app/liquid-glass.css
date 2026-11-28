@@ -70,7 +70,15 @@
 .glass-app button { transition-timing-function: var(--glass-spring); }
 .glass-app button:active:not(:disabled) { scale: .96; }
 .glass-app :is(.text-slate-400, .text-slate-500, .text-slate-600) { color: var(--glass-muted); }
-.glass-topbar { background: var(--glass-tint) !important; border-bottom: 1px solid var(--glass-hairline); backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)); }
+/* The top bar shares the page's base background, not the floating glass tint.
+   Keep it opaque when content scrolls underneath; preserve theme/action colors.
+   Scope specificity also keeps the no-backdrop-filter fallback on this token. */
+.glass-app .glass-topbar {
+  background: var(--m3-bg) !important;
+  border-bottom: 0;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 .glass-nav { border-radius: var(--glass-pill); overflow: hidden; }
 .glass-nav [aria-current="page"], .glass-sidebar [aria-current="page"] {
   background: var(--m3-primary-container); color: var(--m3-on-primary-container);

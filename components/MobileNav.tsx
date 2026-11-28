@@ -57,7 +57,7 @@ export function MobileTopBar() {
   const { setActiveTab, activeTab, openDetail } = useMusic();
 
   return (
-    <header className="glass-topbar lg:hidden sticky top-0 z-30 h-[calc(52px+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] px-3 flex items-center justify-between bg-[var(--m3-bg)]/95 border-b border-[var(--m3-border)]">
+    <header className="glass-topbar lg:hidden sticky top-0 z-30 h-[calc(52px+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] px-3 flex items-center justify-between">
       <div className="flex items-center gap-1 shrink-0">
         <button
           type="button"

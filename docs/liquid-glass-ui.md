@@ -57,3 +57,9 @@ One shared mesh drifts slowly using transforms, pauses when playback pauses, and
 - `npm run build`, `npm run build:static`, `npm run typecheck`, and `git diff --check`: passed. Final Liquid Glass browser rerun passed after the last animation/compatibility adjustments.
 
 Browser fixtures are not production authentication or live YouTube tests. Real iOS Safari/Android WebView optical rendering, device battery/scroll profiling, and physical APK playback still need device QA. No merge, deployment, database/schema migration or credential changes are part of this UI work.
+
+## Top navigation background match
+
+The mobile/tablet top bar now uses the same opaque `--m3-bg` token as the application page instead of `--glass-tint`. Its backdrop filter and bottom divider are removed, so the header no longer has a separate glass-toned strip. Theme selection, artwork ambient behind the page, action accents, sticky positioning and safe-area padding are unchanged; Pure Black stays black only when that setting is enabled. The scoped rule wins over the unsupported-backdrop-filter surface fallback as well.
+
+`node tests/browser-topbar.mjs` checks actual computed header/page background equality in light, dark and Pure Black at 320/390/820px, plus lite/full styling, reduced transparency, settings navigation and sticky scrolling. Use the same fixture server/browser environment as the other browser tests. This is local fixture validation, not a production deployment or physical Android/Safari test.
