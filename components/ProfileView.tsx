@@ -402,16 +402,7 @@ function ProfileViewContent({ userId }: { userId: string }) {
                       Putar
                     </button>
                   )}
-                  {own && (
-                    <button
-                      className="profile-button"
-                      onClick={() =>
-                        openDetail({ kind: "user-playlist", id: p.id })
-                      }
-                    >
-                      Buka playlist
-                    </button>
-                  )}
+                  <button className="profile-button" onClick={() => openDetail({ kind: "user-playlist", id: p.id })}>Buka playlist</button>
                 </div>
                 {p.tracks.length > 0 && (
                   <details>

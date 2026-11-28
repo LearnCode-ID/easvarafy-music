@@ -18,6 +18,7 @@ import {
   createSnapshotStore,
   type SnapshotStore,
 } from "@/lib/ui/snapshotStore";
+import { playlistPath } from "@/lib/social/playlistPage";
 import { usePathname, useRouter } from "next/navigation";
 import { isNativeApp } from "@/lib/auth/native";
 import React, {
@@ -372,7 +373,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const [activeTabState, setActiveTabState] = useState<NavTab>("home");
   const activeTab = pathname.startsWith("/profile")
     ? "profile"
-    : pathname.startsWith("/blend")
+    : pathname.startsWith("/blend") || pathname.startsWith("/playlist")
     ? "library"
     : activeTabState;
   const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
@@ -1766,7 +1767,11 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         );
       } else {
         setActiveTabState(tab);
-        if (pathname.startsWith("/profile") || pathname.startsWith("/blend"))
+        if (
+          pathname.startsWith("/profile") ||
+          pathname.startsWith("/blend") ||
+          pathname.startsWith("/playlist")
+        )
           router.push("/");
       }
       setDetailTarget(null);
@@ -1776,13 +1781,20 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
 
   const openDetail = useCallback(
     (target: DetailTarget | null) => {
-      if (target?.kind === "user-profile") {
+      if (target?.kind === "user-playlist") {
+        router.push(playlistPath(target.id, isNativeApp()));
+        setDetailTarget(null);
+      } else if (target?.kind === "user-profile") {
         router.push(
           isNativeApp() ? `/profile/?id=${target.id}` : `/profile/${target.id}`
         );
         setDetailTarget(null);
       } else if (target?.kind === "blend") {
         router.push(`/blend?id=${target.id}`);
+        setDetailTarget(null);
+      } else if (!target && pathname.startsWith("/playlist")) {
+        setActiveTabState("library");
+        router.push("/");
         setDetailTarget(null);
       } else if (!target && pathname.startsWith("/blend")) {
         router.push("/blend");
@@ -1801,7 +1813,11 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         setDetailTarget(null);
         return true;
       }
-      if (pathname.startsWith("/blend") || pathname.startsWith("/profile")) {
+      if (
+        pathname.startsWith("/blend") ||
+        pathname.startsWith("/profile") ||
+        pathname.startsWith("/playlist")
+      ) {
         setActiveTabState("home");
         router.push("/");
         return true;

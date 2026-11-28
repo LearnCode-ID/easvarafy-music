@@ -38,15 +38,20 @@ import {
   downloadTrack,
   isOfflineDownloadSupported,
 } from "@/lib/metrolist/offlineAudio";
-import {
-  sortPlaylistTracks,
-  playlistShareText,
-  type PlaylistSort,
-} from "@/lib/ui/playlist";
+import { sortPlaylistTracks, type PlaylistSort } from "@/lib/ui/playlist";
 import type { UserPlaylist } from "@/lib/metrolist/types";
+import { publicPlaylistUrl } from "@/lib/social/playlistPage";
 import { cn } from "@/lib/utils";
 
-export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
+export function UserPlaylistView({
+  playlist,
+  canEdit = true,
+  owner,
+}: {
+  playlist: UserPlaylist;
+  canEdit?: boolean;
+  owner?: { name: string; avatar: string | null };
+}) {
   const auth = useAuth();
   const {
     openDetail,
@@ -87,7 +92,7 @@ export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
       }
     );
   }, [likedTracks, history, playlist.tracks]);
-  const name = auth.profile?.name || "Kamu";
+  const name = owner?.name || auth.profile?.name || "Kamu";
   const cover = playlist.coverUrl || playlist.tracks[0]?.thumbnail || "";
   const active =
     !!currentTrack &&
@@ -101,17 +106,16 @@ export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
     editPlaylist(playlist.id, { tracks: next });
   };
   const share = async () => {
-    const text = playlistShareText(playlist.name, playlist.tracks);
     try {
-      if (navigator.share)
-        await navigator.share({ title: playlist.name, text });
+      const url = publicPlaylistUrl(playlist.id);
+      if (navigator.share) await navigator.share({ url });
       else {
-        await navigator.clipboard.writeText(text);
-        showToast("Daftar lagu disalin. Privasi playlist tidak berubah.");
+        await navigator.clipboard.writeText(url);
+        showToast("Tautan playlist disalin. Privasi playlist tidak berubah.");
       }
     } catch (error) {
       if (!(error instanceof Error && error.name === "AbortError"))
-        showToast("Belum bisa membagikan daftar lagu. Coba lagi.");
+        showToast("Belum bisa membagikan tautan playlist. Coba lagi.");
     }
   };
   const download = async () => {
@@ -233,7 +237,10 @@ export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
       : "Opsi playlist";
   return (
     <div data-testid="detail-view" className="user-playlist pb-8">
-      <section className="user-playlist-hero" aria-label="Detail playlist kamu">
+      <section
+        className="user-playlist-hero"
+        aria-label={canEdit ? "Detail playlist kamu" : "Detail playlist publik"}
+      >
         <div className="user-playlist-toolbar">
           <button
             className="playlist-icon playlist-icon-scrim"
@@ -271,7 +278,9 @@ export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
           )}
           <div className="flex items-center gap-2 text-sm font-semibold">
             <ProfileAvatar
-              reference={auth.profile?.avatar_url || null}
+              reference={
+                owner ? owner.avatar : auth.profile?.avatar_url || null
+              }
               name={name}
               className="h-7 w-7 rounded-full shrink-0"
             />
@@ -295,7 +304,49 @@ export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
             </p>
           )}
         </div>
-        <div className="flex justify-end mt-5">
+        <div className="flex items-center justify-between gap-3 mt-5">
+          <div
+            className="flex flex-wrap gap-2"
+            role="group"
+            aria-label="Aksi cepat playlist"
+          >
+            <button
+              className={cn(
+                "playlist-icon",
+                queueState.shuffle && "text-[var(--m3-primary)]"
+              )}
+              aria-label="Acak playlist"
+              aria-pressed={queueState.shuffle}
+              disabled={!playlist.tracks.length}
+              onClick={toggleShuffle}
+            >
+              <Shuffle size={21} />
+            </button>
+            <button
+              className="playlist-icon"
+              aria-label="Bagikan playlist"
+              onClick={() => void share()}
+            >
+              <Share2 size={21} />
+            </button>
+            <button
+              className="playlist-icon"
+              aria-label="Unduh playlist"
+              aria-haspopup="dialog"
+              disabled={!playlist.tracks.length || downloading}
+              onClick={() => setPanel("download")}
+            >
+              <CircleArrowDown size={21} />
+            </button>
+            <button
+              className="playlist-icon"
+              aria-label="Cari di playlist"
+              aria-haspopup="dialog"
+              onClick={() => setPanel("search")}
+            >
+              <Search size={21} />
+            </button>
+          </div>
           <button
             className="playlist-play"
             aria-label={
@@ -388,7 +439,7 @@ export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
               </div>
             </>
           )}
-          {panel === "edit" && (
+          {canEdit && panel === "edit" && (
             <>
               <p className="text-sm text-[var(--glass-muted)]">
                 Atur urutan aslimu atau hapus lagu dari playlist.
@@ -411,7 +462,7 @@ export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
               </button>
             </>
           )}
-          {panel === "details" && (
+          {canEdit && panel === "details" && (
             <PlaylistEditor playlist={playlist} initiallyOpen />
           )}
           {panel === "menu" && (
@@ -427,27 +478,31 @@ export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
                 Acak playlist
                 {queueState.shuffle && <Check size={16} className="ml-auto" />}
               </button>
-              <button
-                className="profile-button w-full"
-                onClick={() => setPanel("add")}
-              >
-                <Plus size={18} />
-                Tambahkan lagu
-              </button>
-              <button
-                className="profile-button w-full"
-                onClick={() => setPanel("edit")}
-              >
-                <ListMusic size={18} />
-                Edit lagu & urutan
-              </button>
-              <button
-                className="profile-button w-full"
-                onClick={() => setPanel("details")}
-              >
-                <Pencil size={18} />
-                Edit nama & detail
-              </button>
+              {canEdit && (
+                <>
+                  <button
+                    className="profile-button w-full"
+                    onClick={() => setPanel("add")}
+                  >
+                    <Plus size={18} />
+                    Tambahkan lagu
+                  </button>
+                  <button
+                    className="profile-button w-full"
+                    onClick={() => setPanel("edit")}
+                  >
+                    <ListMusic size={18} />
+                    Edit lagu & urutan
+                  </button>
+                  <button
+                    className="profile-button w-full"
+                    onClick={() => setPanel("details")}
+                  >
+                    <Pencil size={18} />
+                    Edit nama & detail
+                  </button>
+                </>
+              )}
               <button
                 className="profile-button w-full"
                 onClick={() => setPanel("sort")}
@@ -475,7 +530,7 @@ export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
                 onClick={() => void share()}
               >
                 <Share2 size={18} />
-                Bagikan daftar lagu
+                Bagikan playlist
               </button>
             </div>
           )}
@@ -494,7 +549,7 @@ export function UserPlaylistView({ playlist }: { playlist: UserPlaylist }) {
               </button>
             </>
           )}
-          {panel === "add" && (
+          {canEdit && panel === "add" && (
             <>
               <p className="text-sm text-[var(--glass-muted)]">
                 Pilih dari lagu disukai dan riwayatmu. Untuk lagu lain, buka

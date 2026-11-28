@@ -60,17 +60,18 @@ try {
     ).toString("base64url")}.fixture`;
     await context.addInitScript(
       ({ user, token, exp, theme }) => {
-        localStorage.setItem(
-          "sb-fixture-auth-token",
-          JSON.stringify({
-            access_token: token,
-            refresh_token: "fixture",
-            expires_at: exp,
-            expires_in: 3600,
-            token_type: "bearer",
-            user,
-          })
-        );
+        if (!sessionStorage.getItem("fixture-guest"))
+          localStorage.setItem(
+            "sb-fixture-auth-token",
+            JSON.stringify({
+              access_token: token,
+              refresh_token: "fixture",
+              expires_at: exp,
+              expires_in: 3600,
+              token_type: "bearer",
+              user,
+            })
+          );
         localStorage.setItem(
           "sonora_settings_v1",
           JSON.stringify({ theme, pureBlack: false, dynamicColor: true })
@@ -150,6 +151,7 @@ try {
     };
     let saves = 0,
       rejectSave = false;
+    let accessible = true;
     let uploads = 0,
       rejectUpload = false;
     const imageBytes = Buffer.from(
@@ -209,8 +211,17 @@ try {
         };
         return route.fulfill({ json: playlist });
       }
+      if (url.includes("get_profile_page"))
+        return route.fulfill({
+          json: {
+            status: "ok",
+            id: playlist.user_id,
+            name: "Pemilik Publik",
+            avatar_url: null,
+          },
+        });
       if (url.includes("/user_playlists"))
-        return route.fulfill({ json: [playlist] });
+        return route.fulfill({ json: accessible ? [playlist] : [] });
       if (url.includes("/user_liked_tracks"))
         return route.fulfill({
           json: [{ track: track("playlist-d", "Delta", "Artis baru", 90) }],
@@ -350,7 +361,8 @@ try {
     await detail
       .getByRole("heading", { name: "Playlist nyata uji", exact: true })
       .waitFor();
-    // All playlist controls open modal popups, not panels below the toolbar.
+    await page.waitForURL("**/playlist/owned-list");
+    // Quick actions are restored; management features remain in the popup.
     const popup = page.locator(".playlist-action-dialog");
     const closePopup = () =>
       popup
@@ -362,22 +374,57 @@ try {
         .click();
       await popup.getByRole("button", { name, exact: true }).click();
     };
+    for (const name of ["Tambahkan", "Edit", "Nama & detail", "Urutkan"]) {
+      assert.equal(
+        await detail.getByRole("button", { name, exact: true }).count(),
+        0
+      );
+    }
     for (const name of [
-      "Tambahkan",
-      "Edit",
-      "Nama & detail",
-      "Urutkan",
-      "Cari",
-      "Unduh playlist",
-      "Bagikan daftar lagu",
       "Acak playlist",
+      "Bagikan playlist",
+      "Unduh playlist",
+      "Cari di playlist",
     ]) {
       assert.equal(
         await detail.getByRole("button", { name, exact: true }).count(),
-        0,
-        `${name} only available inside three-dot popup`
+        1,
+        `${name} restored outside popup`
       );
     }
+    assert.equal(
+      await page.getByTestId("youtube-stage").getAttribute("data-persistent"),
+      "yes",
+      "playlist route preserves the existing player host"
+    );
+    const quickShuffle = detail.getByRole("button", {
+      name: "Acak playlist",
+      exact: true,
+    });
+    await quickShuffle.click();
+    assert.equal(await quickShuffle.getAttribute("aria-pressed"), "true");
+    await quickShuffle.click();
+    await detail
+      .getByRole("button", { name: "Bagikan playlist", exact: true })
+      .click();
+    assert.match(
+      await page.evaluate(() => window.__shared.url),
+      /\/playlist\/owned-list$/
+    );
+    await detail
+      .getByRole("button", { name: "Unduh playlist", exact: true })
+      .click();
+    await popup
+      .getByRole("button", { name: "Unduh 3 lagu", exact: true })
+      .waitFor();
+    await closePopup();
+    await detail
+      .getByRole("button", { name: "Cari di playlist", exact: true })
+      .click();
+    await popup
+      .getByRole("textbox", { name: "Filter playlist tracks" })
+      .waitFor();
+    await closePopup();
     const assertPopup = async () => {
       await popup.waitFor();
       assert.equal(await popup.getAttribute("aria-modal"), "true");
@@ -546,13 +593,46 @@ try {
       "true"
     );
     await closePopup();
-    await openAction("Bagikan daftar lagu");
-    assert.match(
-      await page.evaluate(() => window.__shared.text),
-      /1\. Zebra — Beta/
+    await openAction("Bagikan playlist");
+    const shared = await page.evaluate(() => window.__shared);
+    assert.deepEqual(
+      Object.keys(shared),
+      ["url"],
+      "system share sends only the playlist URL, no title or song list"
     );
     assert.equal(saves, 0, "sharing never changes privacy");
+    assert.match(
+      await page.evaluate(() => window.__shared.url),
+      /https:\/\/.*\/playlist\/owned-list$/
+    );
     await closePopup();
+    await page.evaluate(() => {
+      window.__nativeShare = navigator.share;
+      Object.defineProperty(navigator, "share", {
+        configurable: true,
+        value: undefined,
+      });
+      Object.defineProperty(navigator.clipboard, "writeText", {
+        configurable: true,
+        value: async (text) => {
+          window.__copiedPlaylist = text;
+        },
+      });
+    });
+    await detail
+      .getByRole("button", { name: "Bagikan playlist", exact: true })
+      .click();
+    assert.equal(
+      await page.evaluate(() => window.__copiedPlaylist),
+      shared.url,
+      "clipboard fallback copies the URL only"
+    );
+    await page.evaluate(() =>
+      Object.defineProperty(navigator, "share", {
+        configurable: true,
+        value: window.__nativeShare,
+      })
+    );
     await openAction("Edit nama & detail");
     await popup
       .getByRole("textbox", { name: "Nama playlist", exact: true })
@@ -725,11 +805,16 @@ try {
     const persistedCover = playlist.cover_url;
     await page.reload({ waitUntil: "networkidle" });
     await nav.getByRole("button", { name: "Library", exact: true }).click();
+    await page.getByRole("heading", { name: "Library", exact: true }).waitFor();
     await page
       .locator("main")
       .getByText(playlist.name, { exact: true })
       .click();
     await detail.locator('img[src^="blob:"]').first().waitFor();
+    await detail
+      .locator('img[src^="blob:"]')
+      .first()
+      .evaluate((image) => image.decode());
     assert.equal(playlist.cover_url, persistedCover);
     await page.screenshot({
       path: `.cache/playlist-upload-${width}-${theme}.png`,
@@ -786,6 +871,73 @@ try {
         true,
         "long empty playlist does not overflow"
       );
+    }
+    if (width === 390) {
+      // Direct URL, reload, query fallback, guest public read and revocation.
+      await page.goto(`${base}/playlist/owned-list`, {
+        waitUntil: "networkidle",
+      });
+      await detail
+        .getByRole("heading", { name: "Playlist tersimpan", exact: true })
+        .waitFor();
+      await page.goto(`${base}/playlist/?id=owned-list`, {
+        waitUntil: "networkidle",
+      });
+      await detail
+        .getByRole("heading", { name: "Playlist tersimpan", exact: true })
+        .waitFor();
+      await nav.getByRole("button", { name: "Home", exact: true }).click();
+      await page.waitForURL(base + "/");
+      playlist = {
+        ...playlist,
+        user_id: "22222222-2222-4222-8222-222222222222",
+        is_public: true,
+      };
+      await page.evaluate(() => {
+        sessionStorage.setItem("fixture-guest", "yes");
+        localStorage.removeItem("sb-fixture-auth-token");
+      });
+      await page.goto(`${base}/playlist/owned-list`, {
+        waitUntil: "networkidle",
+      });
+      await detail
+        .getByRole("heading", { name: "Playlist tersimpan", exact: true })
+        .waitFor();
+      await detail.getByText("Pemilik Publik", { exact: true }).waitFor();
+      await detail
+        .getByRole("button", { name: "Opsi playlist", exact: true })
+        .click();
+      for (const name of [
+        "Edit nama & detail",
+        "Edit lagu & urutan",
+        "Tambahkan lagu",
+      ])
+        assert.equal(
+          await popup.getByRole("button", { name, exact: true }).count(),
+          0,
+          "guest has no owner actions"
+        );
+      await closePopup();
+      accessible = false;
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await page
+        .getByRole("heading", { name: "Playlist tidak tersedia", exact: true })
+        .waitFor();
+      assert.equal(
+        await detail.count(),
+        0,
+        "revoked public playlist is removed"
+      );
+      await page.reload({ waitUntil: "networkidle" });
+      await page
+        .getByRole("heading", { name: "Playlist tidak tersedia", exact: true })
+        .waitFor();
+      await page.goto(`${base}/playlist/invalid%20id`, {
+        waitUntil: "networkidle",
+      });
+      await page
+        .getByText("Tautan playlist tidak valid.", { exact: true })
+        .waitFor();
     }
     await context.close();
     console.log(

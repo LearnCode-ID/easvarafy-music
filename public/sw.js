@@ -62,7 +62,7 @@ function timeout(ms) {
 
 async function handleNavigation(request) {
   const url = new URL(request.url);
-  if ((url.pathname.startsWith('/profile') || url.pathname.startsWith('/blend'))) return fetch(request, { cache: 'no-store' }).catch(() => new Response('Halaman pribadi tidak tersedia saat offline.', { status: 503 }));
+  if ((url.pathname.startsWith('/profile') || url.pathname.startsWith('/blend') || url.pathname.startsWith('/playlist'))) return fetch(request, { cache: 'no-store' }).catch(() => new Response('Halaman pribadi tidak tersedia saat offline.', { status: 503 }));
   const cacheKey = url.pathname === '' ? '/' : url.pathname;
   const cache = await caches.open(PAGE_CACHE);
   try {

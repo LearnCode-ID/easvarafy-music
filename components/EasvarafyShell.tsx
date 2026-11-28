@@ -26,6 +26,7 @@ function ScreenLoading() {
   return <p role="status" className="m3-card p-5 text-sm">Memuat tampilan…</p>;
 }
 
+const PlaylistLanding = dynamic(() => import("@/components/PlaylistLanding").then(module => module.PlaylistLanding), { loading: ScreenLoading });
 const ProfileView = dynamic(() => import("@/components/ProfileView").then(module => module.ProfileView), { loading: ScreenLoading });
 const ChartsView = dynamic(() => import("@/components/ChartsView").then(module => module.ChartsView), { loading: ScreenLoading });
 const DetailView = dynamic(() => import("@/components/DetailView").then(module => module.DetailView), { loading: ScreenLoading });
@@ -52,6 +53,8 @@ export function EasvarafyShell() {
   const auth = useAuth();
   const pathname = usePathname();
   const query = useSearchParams();
+  const playlistRoute = pathname === "/playlist" || pathname.startsWith("/playlist/");
+  const playlistId = pathname.split("/")[2] || query.get("id") || "";
   const profileId = pathname.startsWith("/profile/")
     ? pathname.split("/")[2] || query.get("id") || auth.userId
     : pathname === "/profile"
@@ -126,6 +129,8 @@ export function EasvarafyShell() {
           <BrowseContent><div className="glass-content" key={`${activeTab}:${detailTarget?.id || ""}:${pathname}`}>
           {detailTarget ? (
             <DetailView />
+          ) : playlistRoute ? (
+            <PlaylistLanding id={playlistId} />
           ) : pathname.startsWith('/blend') ? (
             <BlendLanding code={query.get('code')} id={query.get('id')} />
           ) : profileId ? (
