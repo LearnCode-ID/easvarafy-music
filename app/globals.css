@@ -400,6 +400,34 @@
   background-color: rgba(255, 255, 255, 0.08);
 }
 
+/* iOS-style Library placeholders; theme-aware and scoped so existing loaders
+   retain their current animation. Only the highlight transform is animated. */
+.library-skeleton .skeleton-block {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  animation: none;
+  background-color: color-mix(in srgb, var(--m3-on-surface) 9%, var(--m3-surface));
+}
+.library-skeleton .skeleton-block::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 15%, color-mix(in srgb, var(--m3-on-surface) 7%, transparent) 50%, transparent 85%);
+  transform: translateX(-110%);
+  animation: librarySkeletonShimmer 1.9s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes librarySkeletonShimmer {
+  100% { transform: translateX(110%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .library-skeleton .skeleton-block::after {
+    animation: none;
+    display: none;
+  }
+}
+
 /* Dynamic Island Equalizer Bars (Compositor-only scaleY) */
 @keyframes islandEqBounce {
   0%, 100% {
@@ -489,3 +517,42 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Profile surfaces inherit the same Material theme tokens as the player. */
+.m3-card {
+  border-radius: 24px;
+  border: 1px solid var(--m3-outline-variant, var(--m3-border));
+  background: var(--m3-surface-container, var(--m3-surface));
+  color: var(--m3-on-surface);
+}
+.profile-button {
+  display: inline-flex; align-items: center; gap: .5rem;
+  min-height: 44px; padding: .625rem 1rem; border-radius: 999px;
+  background: var(--m3-surface-container-high); color: var(--m3-on-surface);
+  border: 1px solid var(--m3-outline-variant, var(--m3-border));
+  font-size: .875rem; font-weight: 600;
+}
+.profile-button:hover { background: var(--m3-primary-container); color: var(--m3-on-primary-container); }
+.profile-button:disabled { opacity: .5; cursor: wait; }
+.profile-button:focus-visible, .profile-input:focus-visible { outline: 2px solid var(--m3-primary); outline-offset: 3px; }
+.profile-input {
+  display: block; width: 100%; margin-top: .4rem; padding: .75rem;
+  border-radius: 12px; border: 1px solid var(--m3-outline-variant, var(--m3-border));
+  background: var(--m3-surface-container-high); color: var(--m3-on-surface);
+}
+.profile-editor { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)); }
+@keyframes profile-flame { 50% { transform: scale(.96) rotate(2deg); } }
+@media (prefers-reduced-motion: no-preference) { .profile-flame { animation: profile-flame 2.4s ease-in-out infinite; } }
+
+/* Semantic aliases for profile components, derived from Easvarafy's existing
+   surfaces. Accent/surface variables remain controlled by resolveMetrolistTheme. */
+:root {
+  --m3-on-surface: #1A1C20;
+  --m3-on-surface-variant: #64748b;
+  --m3-outline-variant: var(--m3-border);
+  --m3-surface-container: var(--m3-surface);
+  --m3-surface-container-high: var(--m3-surface-high);
+  --m3-surface-container-highest: var(--m3-surface-high);
+  --m3-secondary-container: var(--m3-primary-soft);
+}
+.dark { --m3-on-surface: #E6E8EE; --m3-on-surface-variant: #94a3b8; }

@@ -405,7 +405,7 @@ export function SearchView() {
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <button
             type="button"
-            onClick={() => playTrack(topTrack, queueContext)}
+            onClick={() => playTrack(topTrack)}
             className="flex items-center gap-4 min-w-0 flex-1 text-left group"
           >
             <div className="w-20 h-20 sm:w-24 sm:h-24 shrink-0 rounded-2xl overflow-hidden shadow-lg">
@@ -438,7 +438,7 @@ export function SearchView() {
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => playTrack(topTrack, queueContext)}
+              onClick={() => playTrack(topTrack)}
               className="h-11 px-5 rounded-full bg-[var(--m3-primary)] text-[var(--m3-on-primary)] text-xs font-semibold inline-flex items-center gap-1.5 shadow-md hover:brightness-110 transition-all whitespace-nowrap shrink-0"
             >
               <Play className="w-4 h-4 fill-current" />
@@ -823,7 +823,7 @@ export function SearchView() {
                         >
                           <button
                             type="button"
-                            onClick={() => playTrack(track, sortedLocalTracks)}
+                            onClick={() => playTrack(track)}
                             className="flex items-center gap-3 min-w-0 flex-1 text-left"
                           >
                             <ArtworkImage
@@ -1174,7 +1174,7 @@ export function SearchView() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => playTrack(track, sortedOnlineTracks)}
+                        onClick={() => playTrack(track)}
                         className="flex items-center gap-3 flex-1 min-w-0 text-left"
                       >
                         <div className="relative w-12 h-12 rounded-xl overflow-hidden shrink-0">

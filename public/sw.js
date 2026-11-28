@@ -11,7 +11,7 @@
  * The Android APK does not use this worker: it ships its own offline copy of
  * the app (see native/android/java/.../OfflineWebViewClient.java).
  */
-const VERSION = 'easvarafy-sw-v1';
+const VERSION = 'easvarafy-sw-v2';
 const PAGE_CACHE = `${VERSION}-pages`;
 const ASSET_CACHE = `${VERSION}-assets`;
 const STATIC_CACHE = `${VERSION}-static`;
@@ -62,6 +62,7 @@ function timeout(ms) {
 
 async function handleNavigation(request) {
   const url = new URL(request.url);
+  if ((url.pathname.startsWith('/profile') || url.pathname.startsWith('/blend') || url.pathname.startsWith('/playlist'))) return fetch(request, { cache: 'no-store' }).catch(() => new Response('Halaman pribadi tidak tersedia saat offline.', { status: 503 }));
   const cacheKey = url.pathname === '' ? '/' : url.pathname;
   const cache = await caches.open(PAGE_CACHE);
   try {
