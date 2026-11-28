@@ -178,6 +178,7 @@ export function validateComposer(
 }
 
 export interface InboxItem {
+  source?: 'broadcast' | 'social';
   id: string;
   title: string;
   body: string;

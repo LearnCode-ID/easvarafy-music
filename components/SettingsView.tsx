@@ -1,5 +1,6 @@
 'use client';
 
+import { PersonalizationSettings } from './PersonalizationSettings';
 import React, { useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -530,7 +531,7 @@ export function SettingsView() {
     if (!file) return;
     try {
       const text = await file.text();
-      const result = importLibraryBackup(text);
+      const result = await importLibraryBackup(text);
       if (!result.ok) {
         showToast(result.message);
       }
@@ -1728,6 +1729,8 @@ export function SettingsView() {
                 })}
               </div>
             </div>
+
+            <PersonalizationSettings />
 
             {/* Auto-Continue Radio */}
             <PreferenceRow

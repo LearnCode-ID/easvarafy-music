@@ -19,6 +19,8 @@ import { useMusic } from './MusicProvider';
 import { DetailViewSkeleton } from './Skeletons';
 import { TrackContextMenu } from './TrackContextMenu';
 import { DownloadButton } from './DownloadButton';
+import { BlendDetailView } from './BlendDetailView';
+import { PlaylistEditor } from './PlaylistEditor';
 import { UserProfileDetail } from './UserProfileDetail';
 import { formatDuration } from '@/lib/metrolist/lyrics';
 import {
@@ -70,6 +72,7 @@ export function DetailView() {
     if (
       !detailTarget ||
       detailTarget.kind === 'user-playlist' ||
+      detailTarget.kind === 'blend' ||
       detailTarget.kind === 'user-profile'
     ) {
       return;
@@ -128,6 +131,8 @@ export function DetailView() {
   );
 
   if (!detailTarget) return null;
+
+  if (detailTarget.kind === 'blend') return <BlendDetailView blendId={detailTarget.id} />;
 
   if (detailTarget.kind === 'user-profile') {
     return <UserProfileDetail userId={detailTarget.id} />;
@@ -348,6 +353,7 @@ export function DetailView() {
             </div>
           </div>
         </section>
+        <PlaylistEditor key={userPlaylist.id} playlist={userPlaylist} />
 
         {/* In-List Quick Filter */}
         {userPlaylist.tracks.length > 0 && (

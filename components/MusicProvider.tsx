@@ -1,5 +1,21 @@
-'use client';
+"use client";
 
+import {
+  usePersonalization,
+  type Personalization,
+} from "@/lib/recommendation/usePersonalization";
+import {
+  ListeningSession,
+  rankCandidates,
+  safeTracks,
+  tasteSeeds,
+  trackKey,
+  type Candidate,
+} from "@/lib/recommendation/engine";
+import { newSignalId } from "@/lib/recommendation/store";
+import { RequestGate } from "@/lib/recommendation/client";
+import { usePathname, useRouter } from "next/navigation";
+import { isNativeApp } from "@/lib/auth/native";
 import React, {
   createContext,
   useCallback,
@@ -8,7 +24,7 @@ import React, {
   useMemo,
   useRef,
   useState,
-} from 'react';
+} from "react";
 import {
   advanceQueue,
   appendRadioContinuation,
@@ -16,43 +32,42 @@ import {
   createQueueState,
   cycleRepeatMode,
   getCurrentTrack,
+  graduallyRefreshAutomaticQueue,
   insertPlayNext,
   playTrackInQueue,
   removeFromQueue,
+  removeAutomaticUpcoming,
   reorderQueue,
   replaceUpcomingQueue,
   toggleShuffleQueue,
   type QueueState,
-} from '@/lib/metrolist/queue';
-import { DEFAULT_SETTINGS } from '@/lib/metrolist/seed';
-import { resolveMetrolistTheme } from '@/lib/metrolist/theme';
+} from "@/lib/metrolist/queue";
+import { DEFAULT_SETTINGS } from "@/lib/metrolist/seed";
+import { resolveMetrolistTheme } from "@/lib/metrolist/theme";
 import {
   loadLibraryState,
+  loadAccountDeviceState,
   recordTrackPlay,
   saveCollection,
   saveHistory,
-  saveLikedTracks,
-  savePlaylists,
   saveSearchHistory,
   saveSettings,
   type SavedCollectionItem,
-} from '@/lib/metrolist/storage';
+} from "@/lib/metrolist/storage";
 import {
   BACKGROUND_RECOVERY_DELAYS_MS,
   buildMediaSessionPosition,
   computeElapsedWithDrift,
   shouldAutoRecoverBackgroundPlayback,
-} from '@/lib/metrolist/background';
+} from "@/lib/metrolist/background";
 import {
   deleteOwnPlaylistFromCloud,
   fetchOwnCloudLibrary,
   recordMonthlyPlay,
   setOwnLikedTrackInCloud,
-  syncMonthlyBaseline,
   syncOwnAllLikedTracksToCloud,
-  syncOwnAllPlaylistsToCloud,
   upsertOwnPlaylistToCloud,
-} from '@/lib/social/community';
+} from "@/lib/social/community";
 import type {
   BackgroundPopupMode,
   DetailTarget,
@@ -63,8 +78,8 @@ import type {
   RepeatMode,
   Track,
   UserPlaylist,
-} from '@/lib/metrolist/types';
-import { apiUrl } from '@/lib/api/base';
+} from "@/lib/metrolist/types";
+import { apiUrl } from "@/lib/api/base";
 import {
   clearNativeMedia,
   hasNativeMediaControls,
@@ -72,16 +87,16 @@ import {
   onNativeMediaAction,
   updateNativeMedia,
   upgradeArtworkUrl,
-} from '@/lib/native/mediaControls';
-import { useAuth } from '@/components/auth/AuthProvider';
+} from "@/lib/native/mediaControls";
+import { useAuth } from "@/components/auth/AuthProvider";
 import {
   ensureOfflineLibraryLoaded,
   getDownloadedTrackSync,
   getOfflineSnapshot,
   resolveOfflinePlaybackUrl,
   subscribeOffline,
-} from '@/lib/metrolist/offlineAudio';
-import { BACK_PRIORITY_PAGE, useBackHandler } from '@/lib/native/backButton';
+} from "@/lib/metrolist/offlineAudio";
+import { BACK_PRIORITY_PAGE, useBackHandler } from "@/lib/native/backButton";
 
 declare global {
   interface Window {
@@ -95,7 +110,10 @@ declare global {
           playerVars?: Record<string, string | number>;
           events?: {
             onReady?: (ev: { target: YTPlayerInstance }) => void;
-            onStateChange?: (ev: { data: number; target: YTPlayerInstance }) => void;
+            onStateChange?: (ev: {
+              data: number;
+              target: YTPlayerInstance;
+            }) => void;
             onError?: () => void;
           };
         }
@@ -131,8 +149,8 @@ interface YTPlayerInstance {
   destroy: () => void;
 }
 
-export type NowPlayingTab = 'player' | 'lyrics' | 'queue';
-export type UpNextMode = 'mixed' | 'discover' | 'related' | 'library';
+export type NowPlayingTab = "player" | "lyrics" | "queue";
+export type UpNextMode = "mixed" | "discover" | "related" | "library";
 
 interface MusicContextValue {
   // Navigation
@@ -196,6 +214,8 @@ interface MusicContextValue {
   upNextRefreshing: boolean;
   jumpToQueueIndex: (idx: number) => void;
 
+  personalization: Personalization;
+
   // Lyrics
   lyrics: LyricsPayload | null;
   lyricsLoading: boolean;
@@ -205,8 +225,25 @@ interface MusicContextValue {
   likedTracks: Track[];
   isLiked: (videoId: string) => boolean;
   toggleLike: (track: Track) => void;
+  libraryLoading: boolean;
+  libraryError: string | null;
+  librarySaving: boolean;
+  reloadLibrary: () => Promise<void>;
+  editPlaylist: (
+    id: string,
+    patch: Partial<
+      Pick<
+        UserPlaylist,
+        "name" | "description" | "coverUrl" | "isPublic" | "tracks"
+      >
+    >
+  ) => void;
   playlists: UserPlaylist[];
-  createPlaylist: (name: string, description?: string, initialTracks?: Track[]) => UserPlaylist;
+  createPlaylist: (
+    name: string,
+    description?: string,
+    initialTracks?: Track[]
+  ) => Promise<UserPlaylist | null>;
   renamePlaylist: (id: string, name: string) => void;
   updatePlaylistTags: (playlistId: string, tags: string[]) => void;
   deletePlaylist: (id: string) => void;
@@ -215,8 +252,11 @@ interface MusicContextValue {
   playlistPickerTrack: Track | null;
   openPlaylistPicker: (track: Track | null) => void;
   savedCollection: SavedCollectionItem[];
-  isSavedInCollection: (kind: SavedCollectionItem['kind'], id: string) => boolean;
-  toggleSaveCollection: (item: Omit<SavedCollectionItem, 'savedAt'>) => void;
+  isSavedInCollection: (
+    kind: SavedCollectionItem["kind"],
+    id: string
+  ) => boolean;
+  toggleSaveCollection: (item: Omit<SavedCollectionItem, "savedAt">) => void;
   searchHistory: string[];
   addSearchHistory: (query: string) => void;
   removeSearchHistoryItem: (query: string) => void;
@@ -228,7 +268,9 @@ interface MusicContextValue {
   updateSettings: (patch: Partial<PlayerSettings>) => void;
   resetSettings: () => void;
   exportLibraryBackup: () => string;
-  importLibraryBackup: (rawJson: string) => { ok: boolean; message: string };
+  importLibraryBackup: (
+    rawJson: string
+  ) => Promise<{ ok: boolean; message: string }>;
   toastMessage: string | null;
   showToast: (msg: string) => void;
 
@@ -239,14 +281,14 @@ interface MusicContextValue {
   playbackSource: PlaybackSource;
 }
 
-export type PlaybackSource = 'online' | 'offline';
+export type PlaybackSource = "online" | "offline";
 
 const MusicContext = createContext<MusicContextValue | null>(null);
 
 export function useMusic(): MusicContextValue {
   const ctx = useContext(MusicContext);
   if (!ctx) {
-    throw new Error('useMusic must be used inside MusicProvider');
+    throw new Error("useMusic must be used inside MusicProvider");
   }
   return ctx;
 }
@@ -256,13 +298,57 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   // requires an account, so those actions route through `requireAuth`, which
   // opens the "Login dulu yuk" popup instead of failing silently.
   const { requireAuth, userId } = useAuth();
+  const personalization = usePersonalization(userId);
+  const { store: tasteStore, client: recommendationClient } = personalization;
+  const recommendationGate = useMemo(() => {
+    void tasteStore;
+    return new RequestGate();
+  }, [tasteStore]);
+  const listeningRef = useRef<{
+    session: ListeningSession;
+    store: typeof tasteStore;
+    credited: boolean;
+    epoch: number;
+    longListen: boolean;
+  } | null>(null);
+  const beginListening = useCallback(
+    (track: Track, origin: "explicit" | "auto") => {
+      listeningRef.current = {
+        session: new ListeningSession(track, origin, newSignalId()),
+        store: tasteStore,
+        credited: false,
+        epoch: tasteStore.state.epoch,
+        longListen: false,
+      };
+      if (origin === "explicit") tasteStore.record(track, "select");
+    },
+    [tasteStore]
+  );
+  const explicitSkip = useCallback(() => {
+    const active = listeningRef.current;
+    if (active?.store === tasteStore && active.session.quickSkip())
+      tasteStore.record(
+        active.session.track,
+        "skip",
+        "explicit",
+        active.session.seconds,
+        active.session.id + ":skip"
+      );
+  }, [tasteStore]);
   const userIdRef = useRef<string | null>(null);
   useEffect(() => {
     userIdRef.current = userId;
   }, [userId]);
 
   const [hydrated, setHydrated] = useState(false);
-  const [activeTab, setActiveTabState] = useState<NavTab>('home');
+  const router = useRouter();
+  const pathname = usePathname();
+  const [activeTabState, setActiveTabState] = useState<NavTab>("home");
+  const activeTab = pathname.startsWith("/profile")
+    ? "profile"
+    : pathname.startsWith("/blend")
+    ? "library"
+    : activeTabState;
   const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
 
   const [queueState, setQueueState] = useState<QueueState>(createQueueState);
@@ -274,10 +360,12 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const [isMuted, setIsMuted] = useState(false);
 
   const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false);
-  const [nowPlayingTab, setNowPlayingTab] = useState<NowPlayingTab>('player');
+  const [nowPlayingTab, setNowPlayingTab] = useState<NowPlayingTab>("player");
   const [showVideoStage, setShowVideoStage] = useState(false);
 
-  const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(null);
+  const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(
+    null
+  );
   const [sleepTimerEndOfTrack, setSleepTimerEndOfTrackState] = useState(false);
   const sleepDeadlineRef = useRef<number | null>(null);
   const sleepEndOfTrackRef = useRef(false);
@@ -285,16 +373,20 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const [history, setHistory] = useState<PlayEvent[]>([]);
   const [likedTracks, setLikedTracks] = useState<Track[]>([]);
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
-  const [savedCollection, setSavedCollection] = useState<SavedCollectionItem[]>([]);
+  const [savedCollection, setSavedCollection] = useState<SavedCollectionItem[]>(
+    []
+  );
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [settings, setSettings] = useState<PlayerSettings>(DEFAULT_SETTINGS);
-  const [playlistPickerTrack, setPlaylistPickerTrack] = useState<Track | null>(null);
+  const [playlistPickerTrack, setPlaylistPickerTrack] = useState<Track | null>(
+    null
+  );
 
   const [lyrics, setLyrics] = useState<LyricsPayload | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [popupMode, setPopupMode] = useState<BackgroundPopupMode>('off');
+  const [popupMode, setPopupMode] = useState<BackgroundPopupMode>("off");
   const popupHandlersRef = useRef<{ open: () => void; close: () => void }>({
     open: () => {},
     close: () => {},
@@ -305,10 +397,9 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const ytReadyRef = useRef(false);
   const lastLoadedVideoIdRef = useRef<string | null>(null);
   const nextTrackRef = useRef<(manual?: boolean) => void>(() => {});
-  const radioFetchingRef = useRef<string | null>(null);
-  const [upNextMode, setUpNextModeState] = useState<UpNextMode>('mixed');
+  const [upNextMode, setUpNextModeState] = useState<UpNextMode>("mixed");
   const [upNextRefreshing, setUpNextRefreshing] = useState(false);
-  const upNextModeRef = useRef<UpNextMode>('mixed');
+  const upNextModeRef = useRef<UpNextMode>("mixed");
   const likedTracksRef = useRef<Track[]>([]);
   const playlistsRef = useRef<UserPlaylist[]>([]);
   const historyRef = useRef<PlayEvent[]>([]);
@@ -320,7 +411,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const bgRecoveryWindowStartRef = useRef(0);
   const lastAutoSkipAtRef = useRef(0);
   const settingsRef = useRef<PlayerSettings>(DEFAULT_SETTINGS);
-  const popupModeRef = useRef<BackgroundPopupMode>('off');
+  const popupModeRef = useRef<BackgroundPopupMode>("off");
   const volumeRef = useRef(85);
   const isMutedRef = useRef(false);
   const recoveryTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
@@ -332,10 +423,11 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   // element instead of the YouTube IFrame. Exactly one engine is active.
   // ---------------------------------------------------------------------------
   const audioElRef = useRef<HTMLAudioElement | null>(null);
-  const engineRef = useRef<'yt' | 'local'>('yt');
+  const engineRef = useRef<"yt" | "local">("yt");
   const localVideoIdRef = useRef<string | null>(null);
   const engineLoadTokenRef = useRef(0);
-  const [playbackSource, setPlaybackSource] = useState<PlaybackSource>('online');
+  const [playbackSource, setPlaybackSource] =
+    useState<PlaybackSource>("online");
   const eqGraphRef = useRef<{
     ctx: AudioContext;
     filters: BiquadFilterNode[];
@@ -350,7 +442,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         const a = audioElRef.current;
         if (!a || !a.src) return;
         const ctx = eqGraphRef.current?.ctx;
-        if (ctx && ctx.state === 'suspended') void ctx.resume().catch(() => {});
+        if (ctx && ctx.state === "suspended") void ctx.resume().catch(() => {});
         void a.play().catch(() => {});
       },
       pauseVideo: () => {
@@ -366,7 +458,8 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         }
       },
       setVolume: (vol: number) => {
-        if (audioElRef.current) audioElRef.current.volume = Math.max(0, Math.min(1, vol / 100));
+        if (audioElRef.current)
+          audioElRef.current.volume = Math.max(0, Math.min(1, vol / 100));
       },
       mute: () => {
         if (audioElRef.current) audioElRef.current.muted = true;
@@ -375,7 +468,8 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         if (audioElRef.current) audioElRef.current.muted = false;
       },
       setPlaybackRate: (rate: number) => {
-        if (audioElRef.current) audioElRef.current.playbackRate = rate > 0 ? rate : 1;
+        if (audioElRef.current)
+          audioElRef.current.playbackRate = rate > 0 ? rate : 1;
       },
       getCurrentTime: () => audioElRef.current?.currentTime ?? 0,
       getDuration: () => {
@@ -397,7 +491,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
 
   /** The engine that currently owns playback (null while YouTube is not ready). */
   const getActivePlayer = useCallback((): YTPlayerInstance | null => {
-    if (engineRef.current === 'local') return localPlayer;
+    if (engineRef.current === "local") return localPlayer;
     return ytReadyRef.current ? ytPlayerRef.current : null;
   }, [localPlayer]);
 
@@ -407,8 +501,8 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     if (!a) return;
     try {
       a.pause();
-      if (a.getAttribute('src')) {
-        a.removeAttribute('src');
+      if (a.getAttribute("src")) {
+        a.removeAttribute("src");
         a.load();
       }
     } catch {
@@ -472,7 +566,8 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
 
   // Lightweight non-focus-stealing Web Audio keep-alive (keeps renderer audio thread alive without stealing Android HTMLMediaElement focus from YouTube IFrame)
   const ensureSilentAudioThread = useCallback(() => {
-    if (typeof window === 'undefined' || !settingsRef.current.backgroundPlay) return;
+    if (typeof window === "undefined" || !settingsRef.current.backgroundPlay)
+      return;
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
@@ -486,7 +581,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         gain.connect(ctx.destination);
         osc.start();
         audioCtxRef.current = ctx;
-      } else if (audioCtxRef.current.state === 'suspended') {
+      } else if (audioCtxRef.current.state === "suspended") {
         void audioCtxRef.current.resume().catch(() => {});
       }
     } catch {
@@ -545,7 +640,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toggleBackgroundPopup = useCallback(() => {
-    if (popupMode === 'off') {
+    if (popupMode === "off") {
       popupHandlersRef.current.open();
     } else {
       popupHandlersRef.current.close();
@@ -566,12 +661,9 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     queueMicrotask(() => {
       if (!active) return;
       const loaded = loadLibraryState();
-      setHistory(loaded.history);
-      setLikedTracks(loaded.likedTracks);
-      setPlaylists(loaded.playlists);
+
       setSettings(loaded.settings);
       setSearchHistory(loaded.searchHistory);
-      setSavedCollection(loaded.savedCollection);
       setHydrated(true);
     });
     return () => {
@@ -579,96 +671,96 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Sync signed-in user's playlists, liked tracks & monthly baseline with Supabase
-  const cloudSyncedUserRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!hydrated || !userId) {
-      if (!userId) cloudSyncedUserRef.current = null;
+  // Cloud is authoritative. Never merge anonymous/global localStorage into an account.
+  const [libraryOwner, setLibraryOwner] = useState<string | null>(null);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
+  const [librarySaving, setLibrarySaving] = useState(false);
+  const libraryBusyRef = useRef(false);
+  const libraryRequestRef = useRef(0);
+  const previousLibraryAccountRef = useRef<string | null>(null);
+  const reloadLibrary = useCallback(async () => {
+    const uid = userId;
+    if (!uid || libraryBusyRef.current) return;
+    const request = ++libraryRequestRef.current;
+    setLibraryLoading(true);
+    const cloud = await fetchOwnCloudLibrary(uid);
+    if (userIdRef.current !== uid || request !== libraryRequestRef.current)
+      return;
+    setLibraryLoading(false);
+    if (!cloud.ok) {
+      setLibraryError(
+        "Library belum tersinkron. Periksa koneksi dan coba lagi."
+      );
       return;
     }
-    if (cloudSyncedUserRef.current === userId) return;
-    cloudSyncedUserRef.current = userId;
-    let cancelled = false;
-
-    const runCloudSync = async () => {
-      const localState = loadLibraryState();
-      if (localState.history.length > 0) {
-        void syncMonthlyBaseline(localState.history);
-      }
-
-      const cloud = await fetchOwnCloudLibrary(userId);
-      if (cancelled || !cloud.ok) return;
-
-      // Merge playlists by id (keep whichever has newer updatedAt)
-      const playlistMap = new Map<string, UserPlaylist>();
-      for (const pl of cloud.playlists) {
-        playlistMap.set(pl.id, pl);
-      }
-      const localOnlyPlaylists: UserPlaylist[] = [];
-      for (const pl of localState.playlists) {
-        if (!pl.id || pl.id === 'login-required') continue;
-        const existing = playlistMap.get(pl.id);
-        if (!existing) {
-          playlistMap.set(pl.id, pl);
-          localOnlyPlaylists.push(pl);
-        } else if ((pl.updatedAt || 0) > (existing.updatedAt || 0)) {
-          playlistMap.set(pl.id, pl);
-          localOnlyPlaylists.push(pl);
+    setLibraryError(null);
+    setPlaylists(cloud.playlists);
+    setLikedTracks(cloud.likedTracks);
+    setLibraryOwner(uid);
+  }, [userId]);
+  useEffect(() => {
+    let active = true;
+    const previousAccount = previousLibraryAccountRef.current;
+    previousLibraryAccountRef.current = userId;
+    queueMicrotask(() => {
+      if (!active) return;
+      if (previousAccount && previousAccount !== userId) {
+        intendedPlayingRef.current = false;
+        userPausedRef.current = true;
+        audioElRef.current?.pause();
+        try {
+          ytPlayerRef.current?.pauseVideo();
+        } catch {
+          /* player may not be ready */
         }
+        popupHandlersRef.current.close();
+        lastLoadedVideoIdRef.current = null;
+        setQueueState(createQueueState());
+        setIsPlaying(false);
+        setIsNowPlayingOpen(false);
+        setLyrics(null);
       }
-      if (localOnlyPlaylists.length > 0) {
-        void syncOwnAllPlaylistsToCloud(userId, localOnlyPlaylists);
-      }
-      const mergedPlaylists = Array.from(playlistMap.values()).sort(
-        (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)
-      );
-      if (!cancelled && mergedPlaylists.length > 0) {
-        setPlaylists(mergedPlaylists);
-        savePlaylists(mergedPlaylists);
-      }
-
-      // Merge liked tracks by videoId
-      const likedMap = new Map<string, Track>();
-      for (const t of localState.likedTracks) {
-        if (t?.videoId) likedMap.set(t.videoId, t);
-      }
-      const localOnlyLikes = localState.likedTracks.filter(
-        (t) => t?.videoId && !cloud.likedTracks.some((c) => c.videoId === t.videoId)
-      );
-      for (const t of cloud.likedTracks) {
-        if (t?.videoId && !likedMap.has(t.videoId)) {
-          likedMap.set(t.videoId, t);
-        }
-      }
-      if (localOnlyLikes.length > 0) {
-        void syncOwnAllLikedTracksToCloud(userId, localOnlyLikes);
-      }
-      const mergedLiked = Array.from(likedMap.values());
-      if (!cancelled && mergedLiked.length > 0) {
-        setLikedTracks(mergedLiked);
-        saveLikedTracks(mergedLiked);
-      }
+      libraryRequestRef.current++;
+      setLibraryLoading(false);
+      const device = loadAccountDeviceState(userId);
+      setPlaylists([]);
+      setLikedTracks([]);
+      setHistory(device.history);
+      setSavedCollection(device.savedCollection);
+      setLibraryOwner(null);
+      setLibraryError(null);
+      setDetailTarget(null);
+      setPlaylistPickerTrack(null);
+      void reloadLibrary();
+    });
+    const refresh = () => {
+      if (document.visibilityState === "visible") void reloadLibrary();
     };
-
-    void runCloudSync();
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
+    const timer = window.setInterval(refresh, 30000);
     return () => {
-      cancelled = true;
+      active = false;
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
+      clearInterval(timer);
     };
-  }, [hydrated, userId]);
+  }, [reloadLibrary, userId]);
 
   // Sync Metrolist dark/light, Pure Black AMOLED class & Material 3 dynamic CSS variables on <html>
   useEffect(() => {
     if (!hydrated) return;
     const root = document.documentElement;
-    if (settings.theme === 'dark') {
-      root.classList.add('dark');
+    if (settings.theme === "dark") {
+      root.classList.add("dark");
     } else {
-      root.classList.remove('dark');
+      root.classList.remove("dark");
     }
-    if (settings.theme === 'dark' && settings.pureBlack) {
-      root.classList.add('pure-black');
+    if (settings.theme === "dark" && settings.pureBlack) {
+      root.classList.add("pure-black");
     } else {
-      root.classList.remove('pure-black');
+      root.classList.remove("pure-black");
     }
 
     const { tokens } = resolveMetrolistTheme(
@@ -680,16 +772,19 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       },
       currentTrack
     );
-    root.style.setProperty('--m3-bg', tokens.bg);
-    root.style.setProperty('--m3-surface', tokens.surface);
-    root.style.setProperty('--m3-surface-high', tokens.surfaceHigh);
-    root.style.setProperty('--m3-border', tokens.border);
-    root.style.setProperty('--m3-primary', tokens.primary);
-    root.style.setProperty('--m3-on-primary', tokens.onPrimary);
-    root.style.setProperty('--m3-primary-container', tokens.primaryContainer);
-    root.style.setProperty('--m3-on-primary-container', tokens.onPrimaryContainer);
-    root.style.setProperty('--m3-primary-soft', tokens.primarySoft);
-    root.style.setProperty('--m3-ring', tokens.ring);
+    root.style.setProperty("--m3-bg", tokens.bg);
+    root.style.setProperty("--m3-surface", tokens.surface);
+    root.style.setProperty("--m3-surface-high", tokens.surfaceHigh);
+    root.style.setProperty("--m3-border", tokens.border);
+    root.style.setProperty("--m3-primary", tokens.primary);
+    root.style.setProperty("--m3-on-primary", tokens.onPrimary);
+    root.style.setProperty("--m3-primary-container", tokens.primaryContainer);
+    root.style.setProperty(
+      "--m3-on-primary-container",
+      tokens.onPrimaryContainer
+    );
+    root.style.setProperty("--m3-primary-soft", tokens.primarySoft);
+    root.style.setProperty("--m3-ring", tokens.ring);
   }, [
     settings.theme,
     settings.pureBlack,
@@ -701,14 +796,15 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
 
   // Initialize YouTube IFrame Player API lazily
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined" || !hydrated) return;
 
     const initPlayer = () => {
-      if (!ytContainerRef.current || ytPlayerRef.current || !window.YT?.Player) return;
+      if (!ytContainerRef.current || ytPlayerRef.current || !window.YT?.Player)
+        return;
       try {
         ytPlayerRef.current = new window.YT.Player(ytContainerRef.current, {
-          height: '100%',
-          width: '100%',
+          height: "100%",
+          width: "100%",
           playerVars: {
             autoplay: 0,
             controls: 0,
@@ -727,8 +823,8 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
                 const iframe = ev.target.getIframe?.();
                 if (iframe) {
                   iframe.setAttribute(
-                    'allow',
-                    'autoplay; encrypted-media; picture-in-picture; fullscreen'
+                    "allow",
+                    "autoplay; encrypted-media; picture-in-picture; fullscreen"
                   );
                 }
               } catch {
@@ -736,7 +832,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
               }
               ev.target.setVolume(volumeRef.current);
               if (!isMutedRef.current) ev.target.unMute();
-              if (lastLoadedVideoIdRef.current && engineRef.current === 'yt') {
+              if (lastLoadedVideoIdRef.current && engineRef.current === "yt") {
                 ev.target.loadVideoById(lastLoadedVideoIdRef.current);
               }
             },
@@ -745,7 +841,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
               if (!PS) return;
               // A downloaded song is playing through <audio>: never let the
               // IFrame play at the same time, and ignore its events.
-              if (engineRef.current === 'local') {
+              if (engineRef.current === "local") {
                 if (ev.data === PS.PLAYING || ev.data === PS.BUFFERING) {
                   try {
                     ev.target.pauseVideo();
@@ -782,10 +878,10 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
                   intendedPlaying: intendedPlayingRef.current,
                   userPaused: userPausedRef.current,
                   visibilityHidden:
-                    typeof document !== 'undefined' &&
-                    document.visibilityState === 'hidden',
-                  popupActive: popupModeRef.current !== 'off',
-                  ytState: 'paused',
+                    typeof document !== "undefined" &&
+                    document.visibilityState === "hidden",
+                  popupActive: popupModeRef.current !== "off",
+                  ytState: "paused",
                 });
                 if (shouldRecover && bgRecoveryCountRef.current < 6) {
                   bgRecoveryCountRef.current += 1;
@@ -813,20 +909,20 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
                   userPausedRef.current = true;
                   intendedPlayingRef.current = false;
                   setIsPlaying(false);
-                  showToast('Sleep timer paused at end of track');
+                  showToast("Sleep timer paused at end of track");
                   return;
                 }
                 nextTrackRef.current(false);
               }
             },
             onError: () => {
-              if (engineRef.current === 'local') return;
+              if (engineRef.current === "local") return;
               setIsBuffering(false);
               if (settingsRef.current.autoSkipOnError) {
                 const now = Date.now();
                 if (now - lastAutoSkipAtRef.current > 2500) {
                   lastAutoSkipAtRef.current = now;
-                  showToast('Track unavailable — skipping to next');
+                  showToast("Track unavailable — skipping to next");
                   nextTrackRef.current(false);
                 }
               }
@@ -848,114 +944,87 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     );
     window.onYouTubeIframeAPIReady = () => initPlayer();
     if (!existingScript) {
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
+      const tag = document.createElement("script");
+      tag.src = "https://www.youtube.com/iframe_api";
       tag.async = true;
       document.head.appendChild(tag);
     }
-  }, [resumePlaybackKeepAlive, showToast]);
-
-  const collectPersonalUpNextPool = useCallback((excludeVideoId: string): Track[] => {
-    const pool: Track[] = [];
-    const seen = new Set<string>([excludeVideoId]);
-    const pushIfNew = (t: Track | undefined) => {
-      if (!t?.videoId || seen.has(t.videoId)) return;
-      seen.add(t.videoId);
-      pool.push(t);
-    };
-
-    for (const t of likedTracksRef.current) pushIfNew(t);
-    for (const pl of playlistsRef.current) {
-      for (const t of pl.tracks) pushIfNew(t);
-    }
-    for (const evt of historyRef.current) pushIfNew(evt.track);
-
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    return pool;
-  }, []);
+  }, [resumePlaybackKeepAlive, showToast, hydrated]);
 
   const buildUpNextCandidates = useCallback(
     async (seedTrack: Track, mode: UpNextMode): Promise<Track[]> => {
-      const personalPool = collectPersonalUpNextPool(seedTrack.videoId);
-      const apiMode =
-        mode === 'related'
-          ? 'related'
-          : mode === 'discover' || mode === 'library'
-          ? 'discover'
-          : 'mixed';
-
-      let remoteTracks: Track[] = [];
-      if (mode !== 'library' || personalPool.length < 12) {
-        try {
-          const headers: Record<string, string> = {};
-          if (settingsRef.current.ytCookie.trim()) {
-            headers['x-yt-cookie'] = settingsRef.current.ytCookie.trim();
-          }
-          const res = await fetch(
-            apiUrl(
-              `/api/music/up-next?videoId=${encodeURIComponent(
-                seedTrack.videoId
-              )}&gl=${settingsRef.current.region}&mode=${apiMode}`
-            ),
-            { headers }
-          );
-          if (res.ok) {
-            const data = (await res.json()) as { tracks?: Track[] };
-            remoteTracks = data.tracks ?? [];
-          }
-        } catch {
-          // fallback to personalPool
+      const region = settingsRef.current.region,
+        cookie = settingsRef.current.ytCookie.trim();
+      const tasteSeed =
+        mode === "mixed"
+          ? tasteSeeds(tasteStore.state, [seedTrack], 1)[0]
+          : undefined;
+      const responses = await Promise.all([
+        recommendationClient.collect(seedTrack, region, cookie, mode, true),
+        ...(tasteSeed
+          ? [recommendationClient.collect(tasteSeed, region, cookie)]
+          : []),
+        ...(mode === "mixed"
+          ? [recommendationClient.collect(undefined, region, cookie)]
+          : []),
+      ]);
+      const pool: Candidate[] = responses.flatMap((r) => r.candidates);
+      if (
+        tasteStore.state.enabled &&
+        mode !== "related" &&
+        mode !== "discover"
+      ) {
+        // Only the currently scoped library, never load-count history.
+        if (
+          libraryOwner === tasteStore.owner &&
+          userIdRef.current === tasteStore.owner
+        ) {
+          const library = [
+            ...likedTracksRef.current,
+            ...playlistsRef.current.flatMap((p) => p.tracks),
+          ];
+          library
+            .slice(0, 200)
+            .forEach((track, order) =>
+              pool.push({ track, source: "library", order })
+            );
         }
       }
-
-      if (mode === 'library') {
-        return [...personalPool, ...remoteTracks].slice(0, 24);
+      const options = {
+        seed: seedTrack,
+        exclude: queueStateRef.current.queue,
+        surface: "queue" as const,
+        hideVideoSongs: settingsRef.current.hideVideoSongs,
+        limit: 24,
+      };
+      let recommendations = rankCandidates(
+        mode === "library" && pool.some((c) => c.source === "library")
+          ? pool.filter((c) => c.source === "library")
+          : pool,
+        tasteStore.state,
+        options
+      );
+      if (recommendations.length < 8 && mode !== "related") {
+        const fallback = await recommendationClient.collect(
+          seedTrack,
+          settingsRef.current.region,
+          settingsRef.current.ytCookie.trim(),
+          "expanded"
+        );
+        pool.push(...fallback.candidates);
+        recommendations = rankCandidates(pool, tasteStore.state, options);
       }
-
-      if (mode === 'discover' || mode === 'related') {
-        return remoteTracks.slice(0, 24);
-      }
-
-      // 'mixed': interleave remote (related + discovery/trending) with user's own library favorites
-      const mixed: Track[] = [];
-      const seen = new Set<string>([seedTrack.videoId]);
-      let rIdx = 0;
-      let pIdx = 0;
-      while (mixed.length < 24 && (rIdx < remoteTracks.length || pIdx < personalPool.length)) {
-        for (let k = 0; k < 2 && rIdx < remoteTracks.length && mixed.length < 24; k++) {
-          const candidate = remoteTracks[rIdx++];
-          if (candidate?.videoId && !seen.has(candidate.videoId)) {
-            seen.add(candidate.videoId);
-            mixed.push(candidate);
-          }
-        }
-        if (pIdx < personalPool.length && mixed.length < 24) {
-          const candidate = personalPool[pIdx++];
-          if (candidate?.videoId && !seen.has(candidate.videoId)) {
-            seen.add(candidate.videoId);
-            mixed.push(candidate);
-          }
-        }
-      }
-      return mixed;
+      return recommendations.map((r) => r.track);
     },
-    [collectPersonalUpNextPool]
+    [recommendationClient, tasteStore, libraryOwner]
   );
 
-  /**
-   * Routes a track to the right engine:
-   *  - downloaded -> local file through <audio> (works in airplane mode)
-   *  - otherwise  -> YouTube IFrame (online)
-   * The other engine is always stopped first so both never play together.
-   */
   const loadTrackIntoEngine = useCallback(
     async (track: Track) => {
       const token = ++engineLoadTokenRef.current;
       const shouldCuePaused =
-        !intendedPlayingRef.current && settingsRef.current.keepPausedOnSongChange;
+        !intendedPlayingRef.current &&
+        settingsRef.current.keepPausedOnSongChange;
 
       if (!getOfflineSnapshot().ready) {
         await ensureOfflineLibraryLoaded();
@@ -968,14 +1037,17 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         if (token !== engineLoadTokenRef.current) return;
         const audio = audioElRef.current;
         if (url && audio) {
-          engineRef.current = 'local';
-          setPlaybackSource('offline');
+          engineRef.current = "local";
+          setPlaybackSource("offline");
           pauseYouTube();
           if (localVideoIdRef.current !== track.videoId || audio.src !== url) {
             audio.src = url;
             localVideoIdRef.current = track.videoId;
           }
-          audio.playbackRate = settingsRef.current.playbackRate > 0 ? settingsRef.current.playbackRate : 1;
+          audio.playbackRate =
+            settingsRef.current.playbackRate > 0
+              ? settingsRef.current.playbackRate
+              : 1;
           audio.volume = Math.max(0, Math.min(1, volumeRef.current / 100));
           audio.muted = isMutedRef.current;
           if (!shouldCuePaused && intendedPlayingRef.current) {
@@ -983,23 +1055,24 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
           }
           return;
         }
-        showToast('File offline tidak ditemukan — memutar online');
+        showToast("File offline tidak ditemukan — memutar online");
       }
 
       // ---- Online (YouTube IFrame) ----
-      engineRef.current = 'yt';
-      setPlaybackSource('online');
+      engineRef.current = "yt";
+      setPlaybackSource("online");
       stopLocalAudio();
 
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
         // No internet and the song is not downloaded: jump to the next
         // downloaded song in the queue instead of spinning forever.
         const q = queueStateRef.current;
         const nextOffline = q.queue.findIndex(
-          (t, i) => i > q.currentIndex && Boolean(getDownloadedTrackSync(t.videoId))
+          (t, i) =>
+            i > q.currentIndex && Boolean(getDownloadedTrackSync(t.videoId))
         );
         if (nextOffline >= 0 && intendedPlayingRef.current) {
-          showToast('Offline — lanjut ke lagu tersimpan berikutnya');
+          showToast("Offline — lanjut ke lagu tersimpan berikutnya");
           setQueueState((prev) =>
             prev.queue[nextOffline]?.videoId === q.queue[nextOffline]?.videoId
               ? { ...prev, currentIndex: nextOffline }
@@ -1011,7 +1084,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         intendedPlayingRef.current = false;
         setIsPlaying(false);
         setIsBuffering(false);
-        showToast('Kamu sedang offline. Lagu ini belum diunduh.');
+        showToast("Kamu sedang offline. Lagu ini belum diunduh.");
         return;
       }
 
@@ -1048,17 +1121,6 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       setCurrentTime(0);
       setDuration(currentTrack.duration ?? 210);
 
-      // Record play in Metrolist history
-      setHistory((prev) => {
-        const updated = recordTrackPlay(prev, currentTrack);
-        saveHistory(updated);
-        return updated;
-      });
-
-      if (userIdRef.current) {
-        void recordMonthlyPlay(currentTrack);
-      }
-
       // Fetch Lyrics (downloaded songs carry their own copy for offline use)
       setLyricsLoading(true);
       const params = new URLSearchParams({
@@ -1068,8 +1130,10 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         duration: String(currentTrack.duration ?? 0),
       });
       await ensureOfflineLibraryLoaded();
-      const offlineLyrics = getDownloadedTrackSync(currentTrack.videoId)?.lyrics ?? null;
-      const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      const offlineLyrics =
+        getDownloadedTrackSync(currentTrack.videoId)?.lyrics ?? null;
+      const isOffline =
+        typeof navigator !== "undefined" && navigator.onLine === false;
 
       if (offlineLyrics && isOffline) {
         if (!cancelled) {
@@ -1078,44 +1142,30 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         }
       } else {
         try {
-          const res = await fetch(apiUrl(`/api/music/lyrics?${params.toString()}`));
+          const res = await fetch(
+            apiUrl(`/api/music/lyrics?${params.toString()}`)
+          );
           const data = (await res.json()) as LyricsPayload;
           if (!cancelled) {
             setLyrics(
-              offlineLyrics && !data?.lines?.length && !data?.plainText ? offlineLyrics : data
+              offlineLyrics && !data?.lines?.length && !data?.plainText
+                ? offlineLyrics
+                : data
             );
           }
         } catch {
           if (!cancelled) {
             setLyrics(
-              offlineLyrics ?? { synced: false, lines: [], plainText: null, source: 'none' }
+              offlineLyrics ?? {
+                synced: false,
+                lines: [],
+                plainText: null,
+                source: "none",
+              }
             );
           }
         } finally {
           if (!cancelled) setLyricsLoading(false);
-        }
-      }
-
-      // Auto-Continue Up Next: prefetch diverse mixed/discovery/library tracks when near end of queue
-      const remaining = queueState.queue.length - 1 - queueState.currentIndex;
-      if (
-        settings.autoContinueRadio &&
-        remaining <= 2 &&
-        radioFetchingRef.current !== currentTrack.videoId
-      ) {
-        radioFetchingRef.current = currentTrack.videoId;
-        try {
-          const candidates = await buildUpNextCandidates(
-            currentTrack,
-            upNextModeRef.current
-          );
-          if (!cancelled && candidates.length > 0) {
-            setQueueState((prev) =>
-              appendRadioContinuation(prev, candidates, settingsRef.current, 16)
-            );
-          }
-        } catch {
-          // ignore network errors for background radio fetch
         }
       }
     };
@@ -1128,13 +1178,169 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTrack?.videoId]);
 
+  useEffect(() => {
+    queueMicrotask(() => {
+      setQueueState(removeAutomaticUpcoming);
+      setUpNextRefreshing(false);
+    });
+    return () => recommendationGate.cancel();
+  }, [tasteStore, recommendationGate]);
+
+  // Recommendations never wait on lyrics, authentication sync or audio loading.
+  useEffect(() => {
+    const seed = currentTrack;
+    const ticket = recommendationGate.next();
+    if (!settings.autoContinueRadio) return;
+    if (!seed || queueState.queue.length - 1 - queueState.currentIndex > 2)
+      return;
+    let cancelled = false;
+    void buildUpNextCandidates(seed, upNextModeRef.current).then(
+      (candidates) => {
+        if (
+          cancelled ||
+          !recommendationGate.valid(ticket) ||
+          !settingsRef.current.autoContinueRadio
+        )
+          return;
+        setQueueState((prev) =>
+          getCurrentTrack(prev)?.videoId === seed.videoId
+            ? appendRadioContinuation(prev, candidates, settingsRef.current, 16)
+            : prev
+        );
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currentTrack,
+    settings.autoContinueRadio,
+    buildUpNextCandidates,
+    recommendationGate,
+    queueState.currentIndex,
+    queueState.queue.length,
+  ]);
+
+  // Real playback sampling. Position changes caused by seek, buffering, errors
+  // or timer suspension earn no listening time; nothing is sent per second.
+  useEffect(() => {
+    if (!currentTrack) return;
+    const active = listeningRef.current;
+    if (
+      !active ||
+      active.store !== tasteStore ||
+      trackKey(active.session.track) !== trackKey(currentTrack)
+    ) {
+      beginListening(currentTrack, "auto");
+    }
+    const timer = setInterval(() => {
+      const entry = listeningRef.current;
+      if (!entry || entry.store !== tasteStore) return;
+      if (entry.epoch !== tasteStore.state.epoch) {
+        beginListening(currentTrack, "auto");
+        return;
+      }
+      const session = entry.session,
+        player = getActivePlayer();
+      if (!tasteStore.ready || !tasteStore.state.enabled) {
+        session.invalidate();
+        return;
+      }
+      try {
+        const playing =
+          isPlaying && !isBuffering && player?.getPlayerState?.() === 1;
+        session.sample(
+          Date.now(),
+          player?.getCurrentTime() ?? 0,
+          playing,
+          settingsRef.current.playbackRate
+        );
+        const reportedDuration = player?.getDuration();
+        const actualDuration =
+          currentTrack.duration ??
+          (typeof reportedDuration === "number" &&
+          Number.isFinite(reportedDuration) &&
+          reportedDuration > 0
+            ? reportedDuration
+            : null);
+        const majority = session.majority(actualDuration);
+        if (!entry.credited && (session.seconds >= 30 || majority)) {
+          entry.credited = true;
+          tasteStore.record(
+            currentTrack,
+            "listen",
+            session.origin,
+            session.seconds,
+            session.id + ":listen"
+          );
+          setHistory((prev) => {
+            const next = recordTrackPlay(prev, currentTrack);
+            saveHistory(next, tasteStore.owner);
+            return next;
+          });
+          if (tasteStore.owner) void recordMonthlyPlay(currentTrack);
+          if (
+            tasteStore.state.events.some(
+              (e) =>
+                e.id !== session.id + ":listen" &&
+                trackKey(e.track) === trackKey(currentTrack) &&
+                ["listen", "complete"].includes(e.kind)
+            )
+          ) {
+            tasteStore.record(
+              currentTrack,
+              "replay",
+              session.origin,
+              session.seconds,
+              session.id + ":replay"
+            );
+          }
+        }
+        if (!entry.longListen && session.seconds >= 120) {
+          entry.longListen = true;
+          tasteStore.record(
+            currentTrack,
+            "listen",
+            session.origin,
+            90,
+            session.id + ":long"
+          );
+        }
+        if (!session.completed && majority) {
+          session.completed = true;
+          tasteStore.record(
+            currentTrack,
+            "complete",
+            session.origin,
+            session.seconds,
+            session.id + ":complete"
+          );
+        }
+      } catch {
+        session.invalidate();
+      }
+    }, 1000);
+    return () => {
+      clearInterval(timer);
+      listeningRef.current?.session.invalidate();
+    };
+  }, [
+    currentTrack,
+    tasteStore,
+    beginListening,
+    getActivePlayer,
+    isPlaying,
+    isBuffering,
+  ]);
+
   // ---------------------------------------------------------------------------
   // Offline <audio> engine events (mirror of the YouTube onStateChange logic)
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const audio = audioElRef.current;
     if (!audio) return;
-    const active = () => engineRef.current === 'local' && Boolean(audio.getAttribute('src'));
+    const active = () =>
+      engineRef.current === "local" && Boolean(audio.getAttribute("src"));
 
     const syncDuration = () => {
       if (!active()) return;
@@ -1165,9 +1371,9 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         backgroundPlayEnabled: settingsRef.current.backgroundPlay,
         intendedPlaying: intendedPlayingRef.current,
         userPaused: userPausedRef.current,
-        visibilityHidden: document.visibilityState === 'hidden',
-        popupActive: popupModeRef.current !== 'off',
-        ytState: 'paused',
+        visibilityHidden: document.visibilityState === "hidden",
+        popupActive: popupModeRef.current !== "off",
+        ytState: "paused",
       });
       if (shouldRecover && bgRecoveryCountRef.current < 6) {
         bgRecoveryCountRef.current += 1;
@@ -1190,7 +1396,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         userPausedRef.current = true;
         intendedPlayingRef.current = false;
         setIsPlaying(false);
-        showToast('Sleep timer paused at end of track');
+        showToast("Sleep timer paused at end of track");
         return;
       }
       nextTrackRef.current(false);
@@ -1199,12 +1405,17 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       if (!active()) return;
       // Missing / corrupt local file: fall back to online playback.
       const track = getCurrentTrack(queueStateRef.current);
-      engineRef.current = 'yt';
-      setPlaybackSource('online');
+      engineRef.current = "yt";
+      setPlaybackSource("online");
       stopLocalAudio();
       setIsBuffering(false);
-      if (track && navigator.onLine !== false && ytReadyRef.current && ytPlayerRef.current) {
-        showToast('File offline gagal diputar — beralih ke online');
+      if (
+        track &&
+        navigator.onLine !== false &&
+        ytReadyRef.current &&
+        ytPlayerRef.current
+      ) {
+        showToast("File offline gagal diputar — beralih ke online");
         try {
           ytPlayerRef.current.loadVideoById(track.videoId);
           if (intendedPlayingRef.current) ytPlayerRef.current.playVideo();
@@ -1212,27 +1423,27 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
           // ignore
         }
       } else {
-        showToast('File offline gagal diputar');
+        showToast("File offline gagal diputar");
         intendedPlayingRef.current = false;
         setIsPlaying(false);
       }
     };
 
-    audio.addEventListener('playing', onPlaying);
-    audio.addEventListener('waiting', onWaiting);
-    audio.addEventListener('pause', onPause);
-    audio.addEventListener('ended', onEnded);
-    audio.addEventListener('error', onError);
-    audio.addEventListener('loadedmetadata', syncDuration);
-    audio.addEventListener('durationchange', syncDuration);
+    audio.addEventListener("playing", onPlaying);
+    audio.addEventListener("waiting", onWaiting);
+    audio.addEventListener("pause", onPause);
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("error", onError);
+    audio.addEventListener("loadedmetadata", syncDuration);
+    audio.addEventListener("durationchange", syncDuration);
     return () => {
-      audio.removeEventListener('playing', onPlaying);
-      audio.removeEventListener('waiting', onWaiting);
-      audio.removeEventListener('pause', onPause);
-      audio.removeEventListener('ended', onEnded);
-      audio.removeEventListener('error', onError);
-      audio.removeEventListener('loadedmetadata', syncDuration);
-      audio.removeEventListener('durationchange', syncDuration);
+      audio.removeEventListener("playing", onPlaying);
+      audio.removeEventListener("waiting", onWaiting);
+      audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("error", onError);
+      audio.removeEventListener("loadedmetadata", syncDuration);
+      audio.removeEventListener("durationchange", syncDuration);
     };
   }, [pauseYouTube, showToast, stopLocalAudio]);
 
@@ -1242,7 +1453,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     void ensureOfflineLibraryLoaded();
     return subscribeOffline(() => {
       const localId = localVideoIdRef.current;
-      if (engineRef.current !== 'local' || !localId) return;
+      if (engineRef.current !== "local" || !localId) return;
       if (getDownloadedTrackSync(localId)) return;
       const track = getCurrentTrack(queueStateRef.current);
       if (track && track.videoId === localId) void loadTrackIntoEngine(track);
@@ -1251,8 +1462,8 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
 
   // Opened without internet: go straight to the Library (offline downloads).
   useEffect(() => {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      queueMicrotask(() => setActiveTabState('library'));
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      queueMicrotask(() => setActiveTabState("library"));
     }
   }, []);
 
@@ -1260,15 +1471,16 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   // The YouTube IFrame cannot be processed, so this only affects offline playback.
   useEffect(() => {
     const audio = audioElRef.current;
-    if (!audio || typeof window === 'undefined') return;
+    if (!audio || typeof window === "undefined") return;
     const bands =
-      Array.isArray(settings.equalizerBands) && settings.equalizerBands.length === 5
+      Array.isArray(settings.equalizerBands) &&
+      settings.equalizerBands.length === 5
         ? settings.equalizerBands
         : [0, 0, 0, 0, 0];
     const eqActive = settings.bassBoostEnabled || bands.some((b) => b !== 0);
     let graph = eqGraphRef.current;
     if (!graph) {
-      if (!eqActive || playbackSource !== 'offline') return;
+      if (!eqActive || playbackSource !== "offline") return;
       try {
         const Ctx = window.AudioContext || window.webkitAudioContext;
         if (!Ctx) return;
@@ -1277,13 +1489,18 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         const freqs = [60, 230, 910, 3600, 14000];
         const filters = freqs.map((f, i) => {
           const node = ctx.createBiquadFilter();
-          node.type = i === 0 ? 'lowshelf' : i === freqs.length - 1 ? 'highshelf' : 'peaking';
+          node.type =
+            i === 0
+              ? "lowshelf"
+              : i === freqs.length - 1
+              ? "highshelf"
+              : "peaking";
           node.frequency.value = f;
           node.Q.value = 1;
           return node;
         });
         const bass = ctx.createBiquadFilter();
-        bass.type = 'lowshelf';
+        bass.type = "lowshelf";
         bass.frequency.value = 100;
         let node: AudioNode = source;
         for (const f of [...filters, bass]) {
@@ -1306,22 +1523,27 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
 
   // Non-focus-stealing Web Audio Thread Keep-Alive + Browser Tab Title Sync
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     if (currentTrack && isPlaying) {
       document.title = `▶ ${currentTrack.title} · ${currentTrack.artist} — Easvarafy`;
     } else if (currentTrack) {
       document.title = `${currentTrack.title} — Easvarafy`;
     } else {
-      document.title = 'Easvarafy — Dengerin Musik Tanpa Batas';
+      document.title = "Easvarafy — Dengerin Musik Tanpa Batas";
     }
 
     if (isPlaying && settings.backgroundPlay && currentTrack) {
       ensureSilentAudioThread();
-    } else if (audioCtxRef.current && audioCtxRef.current.state === 'running') {
+    } else if (audioCtxRef.current && audioCtxRef.current.state === "running") {
       void audioCtxRef.current.suspend().catch(() => {});
     }
-  }, [isPlaying, settings.backgroundPlay, currentTrack, ensureSilentAudioThread]);
+  }, [
+    isPlaying,
+    settings.backgroundPlay,
+    currentTrack,
+    ensureSilentAudioThread,
+  ]);
 
   // Cleanup keep-alive AudioContext & recovery timers on unmount
   useEffect(() => {
@@ -1336,10 +1558,10 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
 
   // Page Visibility & Window Blur Guard: keep playback alive across tab/app transitions + optional auto pop-out
   useEffect(() => {
-    if (typeof document === 'undefined') return;
+    if (typeof document === "undefined") return;
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
+      if (document.visibilityState === "hidden") {
         if (
           settingsRef.current.backgroundPlay &&
           intendedPlayingRef.current &&
@@ -1348,7 +1570,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
           resumePlaybackKeepAlive();
           if (
             settingsRef.current.autoPopoutIsland &&
-            popupModeRef.current === 'off' &&
+            popupModeRef.current === "off" &&
             // The Android system Dynamic Island already shows outside the app.
             !isNativeIslandActive()
           ) {
@@ -1365,7 +1587,11 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         if (player) {
           try {
             const ytTime = player.getCurrentTime();
-            if (typeof ytTime === 'number' && !Number.isNaN(ytTime) && ytTime > 0) {
+            if (
+              typeof ytTime === "number" &&
+              !Number.isNaN(ytTime) &&
+              ytTime > 0
+            ) {
               setCurrentTime(ytTime);
             }
           } catch {
@@ -1385,13 +1611,13 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('blur', handleWindowBlur);
-    window.addEventListener('pageshow', handleWindowBlur);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("pageshow", handleWindowBlur);
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('blur', handleWindowBlur);
-      window.removeEventListener('pageshow', handleWindowBlur);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("pageshow", handleWindowBlur);
     };
   }, [resumePlaybackKeepAlive, getActivePlayer]);
 
@@ -1414,7 +1640,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         clearRecoveryTimers();
         setIsPlaying(false);
         getActivePlayer()?.pauseVideo();
-        showToast('Sleep timer paused playback');
+        showToast("Sleep timer paused playback");
         return;
       }
 
@@ -1427,7 +1653,8 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
             intendedPlayingRef.current &&
             !userPausedRef.current &&
             settingsRef.current.backgroundPlay &&
-            (popupModeRef.current !== 'off' || document.visibilityState === 'hidden') &&
+            (popupModeRef.current !== "off" ||
+              document.visibilityState === "hidden") &&
             (ytState === 2 || ytState === 5)
           ) {
             if (!isMutedRef.current) {
@@ -1440,12 +1667,16 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
           const ytTime = player.getCurrentTime();
           const ytDur = player.getDuration();
           if (ytDur && ytDur > 0) setDuration(ytDur);
-          if (typeof ytTime === 'number' && !Number.isNaN(ytTime) && ytTime > 0) {
+          if (
+            typeof ytTime === "number" &&
+            !Number.isNaN(ytTime) &&
+            ytTime > 0
+          ) {
             setCurrentTime(ytTime);
             return;
           }
           // The local <audio> engine reports its own end via the 'ended' event.
-          if (engineRef.current === 'local') return;
+          if (engineRef.current === "local") return;
         } catch {
           // fallback timer increment
         }
@@ -1469,16 +1700,50 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     }, 250);
 
     return () => clearInterval(timer);
-  }, [isPlaying, currentTrack, duration, settings.playbackRate, showToast, clearRecoveryTimers, getActivePlayer]);
+  }, [
+    isPlaying,
+    currentTrack,
+    duration,
+    settings.playbackRate,
+    showToast,
+    clearRecoveryTimers,
+    getActivePlayer,
+  ]);
 
-  const setActiveTab = useCallback((tab: NavTab) => {
-    setActiveTabState(tab);
-    setDetailTarget(null);
-  }, []);
+  const setActiveTab = useCallback(
+    (tab: NavTab) => {
+      if (tab === "profile") {
+        if (!requireAuth("Masuk untuk membuka profil kamu.")) return;
+        router.push(
+          isNativeApp() ? `/profile/?id=${userId}` : `/profile/${userId}`
+        );
+      } else {
+        setActiveTabState(tab);
+        if (pathname.startsWith("/profile") || pathname.startsWith("/blend"))
+          router.push("/");
+      }
+      setDetailTarget(null);
+    },
+    [pathname, requireAuth, router, userId]
+  );
 
-  const openDetail = useCallback((target: DetailTarget | null) => {
-    setDetailTarget(target);
-  }, []);
+  const openDetail = useCallback(
+    (target: DetailTarget | null) => {
+      if (target?.kind === "user-profile") {
+        router.push(
+          isNativeApp() ? `/profile/?id=${target.id}` : `/profile/${target.id}`
+        );
+        setDetailTarget(null);
+      } else if (target?.kind === "blend") {
+        router.push(`/blend?id=${target.id}`);
+        setDetailTarget(null);
+      } else if (!target && pathname.startsWith("/blend")) {
+        router.push("/blend");
+        setDetailTarget(null);
+      } else setDetailTarget(target);
+    },
+    [router, pathname]
+  );
 
   // Android back at page level: detail page -> its tab -> Home tab. Sheets and
   // the full player register their own (higher) handlers.
@@ -1489,8 +1754,13 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         setDetailTarget(null);
         return true;
       }
-      if (activeTab !== 'home') {
-        setActiveTabState('home');
+      if (pathname.startsWith("/blend") || pathname.startsWith("/profile")) {
+        setActiveTabState("home");
+        router.push("/");
+        return true;
+      }
+      if (activeTab !== "home") {
+        setActiveTabState("home");
         return true;
       }
       return false;
@@ -1498,35 +1768,52 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     BACK_PRIORITY_PAGE
   );
 
-  const playTrack = useCallback((track: Track, contextQueue?: Track[]) => {
-    userPausedRef.current = false;
-    intendedPlayingRef.current = true;
-    bgRecoveryCountRef.current = 0;
-    setQueueState((prev) => playTrackInQueue(prev, track, contextQueue));
-    setIsPlaying(true);
-    if (getDownloadedTrackSync(track.videoId)) {
-      // Downloaded: play the local file (the track effect loads it). Stop the
-      // IFrame right away so the two engines never overlap.
-      pauseYouTube();
-      if (engineRef.current === 'local' && localVideoIdRef.current === track.videoId) {
-        localPlayer.seekTo(0);
-        localPlayer.playVideo();
+  const playTrack = useCallback(
+    (track: Track, contextQueue?: Track[]) => {
+      explicitSkip();
+      beginListening(track, "explicit");
+      recommendationGate.cancel();
+      userPausedRef.current = false;
+      intendedPlayingRef.current = true;
+      bgRecoveryCountRef.current = 0;
+      setQueueState((prev) => playTrackInQueue(prev, track, contextQueue));
+      setIsPlaying(true);
+      if (getDownloadedTrackSync(track.videoId)) {
+        // Downloaded: play the local file (the track effect loads it). Stop the
+        // IFrame right away so the two engines never overlap.
+        pauseYouTube();
+        if (
+          engineRef.current === "local" &&
+          localVideoIdRef.current === track.videoId
+        ) {
+          localPlayer.seekTo(0);
+          localPlayer.playVideo();
+        }
+        return;
       }
-      return;
-    }
-    engineRef.current = 'yt';
-    setPlaybackSource('online');
-    stopLocalAudio();
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-    if (ytReadyRef.current && ytPlayerRef.current) {
-      try {
-        ytPlayerRef.current.loadVideoById(track.videoId);
-        ytPlayerRef.current.playVideo();
-      } catch {
-        // ignore
+      engineRef.current = "yt";
+      setPlaybackSource("online");
+      stopLocalAudio();
+      if (typeof navigator !== "undefined" && navigator.onLine === false)
+        return;
+      if (ytReadyRef.current && ytPlayerRef.current) {
+        try {
+          ytPlayerRef.current.loadVideoById(track.videoId);
+          ytPlayerRef.current.playVideo();
+        } catch {
+          // ignore
+        }
       }
-    }
-  }, [localPlayer, pauseYouTube, stopLocalAudio]);
+    },
+    [
+      localPlayer,
+      pauseYouTube,
+      stopLocalAudio,
+      beginListening,
+      explicitSkip,
+      recommendationGate,
+    ]
+  );
 
   const play = useCallback(() => {
     if (!currentTrack) return;
@@ -1571,25 +1858,34 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     }
   }, [currentTrack, isPlaying, pause, play]);
 
-  const nextTrack = useCallback((manual = true) => {
-    const stayPaused =
-      manual &&
-      settingsRef.current.keepPausedOnSongChange &&
-      !intendedPlayingRef.current;
-    setQueueState((prev) => {
-      const res = advanceQueue(prev, 'next', { manual });
-      if (res.ended || stayPaused) {
-        userPausedRef.current = true;
-        intendedPlayingRef.current = false;
-        setIsPlaying(false);
-      } else {
-        userPausedRef.current = false;
-        intendedPlayingRef.current = true;
-        setIsPlaying(true);
+  const nextTrack = useCallback(
+    (manual = true) => {
+      if (manual) explicitSkip();
+      listeningRef.current?.session.invalidate();
+      if (!manual && queueStateRef.current.repeat === "one") {
+        const repeated = getCurrentTrack(queueStateRef.current);
+        if (repeated) beginListening(repeated, "auto");
       }
-      return res.state;
-    });
-  }, []);
+      const stayPaused =
+        manual &&
+        settingsRef.current.keepPausedOnSongChange &&
+        !intendedPlayingRef.current;
+      setQueueState((prev) => {
+        const res = advanceQueue(prev, "next", { manual });
+        if (res.ended || stayPaused) {
+          userPausedRef.current = true;
+          intendedPlayingRef.current = false;
+          setIsPlaying(false);
+        } else {
+          userPausedRef.current = false;
+          intendedPlayingRef.current = true;
+          setIsPlaying(true);
+        }
+        return res.state;
+      });
+    },
+    [explicitSkip, beginListening]
+  );
 
   useEffect(() => {
     nextTrackRef.current = nextTrack;
@@ -1602,36 +1898,40 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const stayPaused =
-      settingsRef.current.keepPausedOnSongChange &&
-      !intendedPlayingRef.current;
+      settingsRef.current.keepPausedOnSongChange && !intendedPlayingRef.current;
     userPausedRef.current = stayPaused;
     intendedPlayingRef.current = !stayPaused;
     setQueueState((prev) => {
-      const res = advanceQueue(prev, 'prev');
+      const res = advanceQueue(prev, "prev");
       setIsPlaying(!stayPaused);
       return res.state;
     });
   }, [currentTime, getActivePlayer]);
 
-  const seekTo = useCallback((seconds: number) => {
-    const clamped = Math.max(0, seconds);
-    setCurrentTime(clamped);
-    const player = getActivePlayer();
-    if (player) {
-      try {
-        player.seekTo(clamped, true);
-      } catch {
-        // ignore
+  const seekTo = useCallback(
+    (seconds: number) => {
+      listeningRef.current?.session.invalidate();
+      const clamped = Math.max(0, seconds);
+      setCurrentTime(clamped);
+      const player = getActivePlayer();
+      if (player) {
+        try {
+          player.seekTo(clamped, true);
+        } catch {
+          // ignore
+        }
       }
-    }
-  }, [getActivePlayer]);
+    },
+    [getActivePlayer]
+  );
 
   // Full Media Session API for native iOS / Android / macOS / Windows background & lockscreen controls
   useEffect(() => {
-    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator))
+      return;
     if (!currentTrack) {
       try {
-        navigator.mediaSession.playbackState = 'none';
+        navigator.mediaSession.playbackState = "none";
       } catch {
         // ignore
       }
@@ -1642,52 +1942,79 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: currentTrack.title,
         artist: currentTrack.artist,
-        album: currentTrack.album?.name || 'Easvarafy Music',
+        album: currentTrack.album?.name || "Easvarafy Music",
         artwork: currentTrack.thumbnail
           ? [
-              { src: currentTrack.thumbnail, sizes: '256x256', type: 'image/jpeg' },
-              { src: currentTrack.thumbnail, sizes: '544x544', type: 'image/jpeg' },
+              {
+                src: currentTrack.thumbnail,
+                sizes: "256x256",
+                type: "image/jpeg",
+              },
+              {
+                src: currentTrack.thumbnail,
+                sizes: "544x544",
+                type: "image/jpeg",
+              },
             ]
           : [],
       });
-      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
-      navigator.mediaSession.setActionHandler('play', () => {
+      navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+      navigator.mediaSession.setActionHandler("play", () => {
         play();
         resumePlaybackKeepAlive();
       });
-      navigator.mediaSession.setActionHandler('pause', () => pause());
-      navigator.mediaSession.setActionHandler('stop', () => pause());
-      navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack(true));
-      navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
-      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+      navigator.mediaSession.setActionHandler("pause", () => pause());
+      navigator.mediaSession.setActionHandler("stop", () => pause());
+      navigator.mediaSession.setActionHandler("nexttrack", () =>
+        nextTrack(true)
+      );
+      navigator.mediaSession.setActionHandler("previoustrack", () =>
+        prevTrack()
+      );
+      navigator.mediaSession.setActionHandler("seekbackward", (details) => {
         const offset = details.seekOffset ?? 10;
         seekTo(Math.max(0, currentTime - offset));
       });
-      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+      navigator.mediaSession.setActionHandler("seekforward", (details) => {
         const offset = details.seekOffset ?? 10;
         seekTo(Math.min(duration || 210, currentTime + offset));
       });
-      navigator.mediaSession.setActionHandler('seekto', (details) => {
-        if (typeof details.seekTime === 'number') {
+      navigator.mediaSession.setActionHandler("seekto", (details) => {
+        if (typeof details.seekTime === "number") {
           seekTo(details.seekTime);
         }
       });
     } catch {
       // ignore unsupported MediaSession environments
     }
-  }, [currentTrack, isPlaying, play, pause, resumePlaybackKeepAlive, nextTrack, prevTrack, seekTo, currentTime, duration]);
+  }, [
+    currentTrack,
+    isPlaying,
+    play,
+    pause,
+    resumePlaybackKeepAlive,
+    nextTrack,
+    prevTrack,
+    seekTo,
+    currentTime,
+    duration,
+  ]);
 
   // Sync Media Session position state smoothly
   useEffect(() => {
     if (
-      typeof navigator === 'undefined' ||
-      !('mediaSession' in navigator) ||
-      typeof navigator.mediaSession.setPositionState !== 'function' ||
+      typeof navigator === "undefined" ||
+      !("mediaSession" in navigator) ||
+      typeof navigator.mediaSession.setPositionState !== "function" ||
       !currentTrack
     ) {
       return;
     }
-    const pos = buildMediaSessionPosition(currentTime, duration, settings.playbackRate);
+    const pos = buildMediaSessionPosition(
+      currentTime,
+      duration,
+      settings.playbackRate
+    );
     if (!pos) return;
     try {
       navigator.mediaSession.setPositionState(pos);
@@ -1701,36 +2028,53 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   // WebView does not forward navigator.mediaSession to Android, so we drive a
   // native MediaSession through the EasvarafyMedia Capacitor plugin instead.
   // ---------------------------------------------------------------------------
-  const nativeMediaHandlersRef = useRef({ play, pause, nextTrack, prevTrack, seekTo, resumePlaybackKeepAlive });
+  const nativeMediaHandlersRef = useRef({
+    play,
+    pause,
+    nextTrack,
+    prevTrack,
+    seekTo,
+    resumePlaybackKeepAlive,
+  });
   useEffect(() => {
-    nativeMediaHandlersRef.current = { play, pause, nextTrack, prevTrack, seekTo, resumePlaybackKeepAlive };
+    nativeMediaHandlersRef.current = {
+      play,
+      pause,
+      nextTrack,
+      prevTrack,
+      seekTo,
+      resumePlaybackKeepAlive,
+    };
   }, [play, pause, nextTrack, prevTrack, seekTo, resumePlaybackKeepAlive]);
 
   useEffect(() => {
     return onNativeMediaAction((event) => {
       const h = nativeMediaHandlersRef.current;
       switch (event.action) {
-        case 'play':
+        case "play":
           h.play();
           h.resumePlaybackKeepAlive();
           break;
-        case 'pause':
+        case "pause":
           h.pause();
           break;
-        case 'next':
+        case "next":
           h.nextTrack(true);
           break;
-        case 'previous':
+        case "previous":
           h.prevTrack();
           break;
-        case 'seekto':
-          if (typeof event.position === 'number' && Number.isFinite(event.position)) {
+        case "seekto":
+          if (
+            typeof event.position === "number" &&
+            Number.isFinite(event.position)
+          ) {
             h.seekTo(event.position);
           }
           break;
-        case 'open':
+        case "open":
           // Opened from the system Dynamic Island -> show the full player.
-          setNowPlayingTab('player');
+          setNowPlayingTab("player");
           setIsNowPlayingOpen(true);
           break;
       }
@@ -1743,25 +2087,35 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   }, [currentTime]);
   // Last position we told Android about, used to detect seeks / drift without
   // rebuilding the notification on every 250 ms progress tick.
-  const nativeLastSyncRef = useRef<{ position: number; at: number; playing: boolean; rate: number } | null>(null);
+  const nativeLastSyncRef = useRef<{
+    position: number;
+    at: number;
+    playing: boolean;
+    rate: number;
+  } | null>(null);
 
   const pushNativeMedia = useCallback(() => {
     if (!currentTrack) return;
     const effectiveDuration = duration || currentTrack.duration || 0;
     const position = nativeCurrentTimeRef.current;
     const rate = settings.playbackRate > 0 ? settings.playbackRate : 1;
-    nativeLastSyncRef.current = { position, at: Date.now(), playing: isPlaying, rate };
+    nativeLastSyncRef.current = {
+      position,
+      at: Date.now(),
+      playing: isPlaying,
+      rate,
+    };
     const offlineRecord = getDownloadedTrackSync(currentTrack.videoId);
     const localArtwork =
-      offlineRecord?.localThumbUri?.startsWith('file://') &&
-      typeof navigator !== 'undefined' &&
+      offlineRecord?.localThumbUri?.startsWith("file://") &&
+      typeof navigator !== "undefined" &&
       navigator.onLine === false
         ? offlineRecord.localThumbUri
         : null;
     void updateNativeMedia({
       title: currentTrack.title,
       artist: currentTrack.artist,
-      album: currentTrack.album?.name || '',
+      album: currentTrack.album?.name || "",
       artworkUrl: localArtwork ?? upgradeArtworkUrl(currentTrack.thumbnail),
       playing: isPlaying,
       position,
@@ -1795,21 +2149,24 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     }
   }, [currentTime, currentTrack, pushNativeMedia]);
 
-  const setVolume = useCallback((vol: number) => {
-    const clamped = Math.max(0, Math.min(100, vol));
-    setVolumeState(clamped);
-    setIsMuted(clamped === 0);
-    localPlayer.setVolume(clamped);
-    if (clamped > 0) localPlayer.unMute();
-    if (ytReadyRef.current && ytPlayerRef.current) {
-      try {
-        ytPlayerRef.current.setVolume(clamped);
-        if (clamped > 0) ytPlayerRef.current.unMute();
-      } catch {
-        // ignore
+  const setVolume = useCallback(
+    (vol: number) => {
+      const clamped = Math.max(0, Math.min(100, vol));
+      setVolumeState(clamped);
+      setIsMuted(clamped === 0);
+      localPlayer.setVolume(clamped);
+      if (clamped > 0) localPlayer.unMute();
+      if (ytReadyRef.current && ytPlayerRef.current) {
+        try {
+          ytPlayerRef.current.setVolume(clamped);
+          if (clamped > 0) ytPlayerRef.current.unMute();
+        } catch {
+          // ignore
+        }
       }
-    }
-  }, [localPlayer]);
+    },
+    [localPlayer]
+  );
 
   const toggleMute = useCallback(() => {
     setIsMuted((prev) => {
@@ -1861,60 +2218,150 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const cycleRepeat = useCallback(() => {
-    setQueueState((prev) => ({ ...prev, repeat: cycleRepeatMode(prev.repeat) }));
+    setQueueState((prev) => ({
+      ...prev,
+      repeat: cycleRepeatMode(prev.repeat),
+    }));
   }, []);
 
-  const jumpToQueueIndex = useCallback((idx: number) => {
-    setQueueState((prev) => {
-      if (idx < 0 || idx >= prev.queue.length) return prev;
-      return { ...prev, currentIndex: idx };
-    });
-    setIsPlaying(true);
-  }, []);
+  const jumpToQueueIndex = useCallback(
+    (idx: number) => {
+      const track = queueStateRef.current.queue[idx];
+      if (!track) return;
+      explicitSkip();
+      beginListening(track, "explicit");
+      recommendationGate.cancel();
+      setQueueState((prev) => {
+        if (idx < 0 || idx >= prev.queue.length) return prev;
+        return { ...prev, currentIndex: idx };
+      });
+      setIsPlaying(true);
+    },
+    [explicitSkip, beginListening, recommendationGate]
+  );
 
   const startRadio = useCallback(
     async (track: Track, mode?: UpNextMode) => {
-      const targetMode = mode ?? upNextModeRef.current;
-      playTrack(track, [track]);
-      showToast(`Memulai Up Next dari "${track.title}"`);
-      setUpNextRefreshing(true);
-      try {
-        const candidates = await buildUpNextCandidates(track, targetMode);
-        if (candidates.length > 0) {
-          setQueueState((prev) =>
-            appendRadioContinuation(prev, candidates, settingsRef.current, 20)
-          );
-        }
-      } catch {
-        // ignore
-      } finally {
-        setUpNextRefreshing(false);
+      if (mode) {
+        upNextModeRef.current = mode;
+        setUpNextModeState(mode);
       }
+      playTrack(track, [track]);
+      showToast(
+        settingsRef.current.autoContinueRadio
+          ? `Memulai radio dari “${track.title}”`
+          : "Autoplay nonaktif. Hanya lagu pilihan yang diputar."
+      );
     },
-    [buildUpNextCandidates, playTrack, showToast]
+    [playTrack, showToast]
   );
 
   const refreshUpNext = useCallback(
     async (mode?: UpNextMode) => {
       const seed = getCurrentTrack(queueState);
-      if (!seed) return;
+      if (!seed || !settingsRef.current.autoContinueRadio) return;
+      const ticket = recommendationGate.next();
       const targetMode = mode ?? upNextModeRef.current;
       setUpNextRefreshing(true);
       try {
         const candidates = await buildUpNextCandidates(seed, targetMode);
-        if (candidates.length > 0) {
+        if (
+          recommendationGate.valid(ticket) &&
+          settingsRef.current.autoContinueRadio &&
+          candidates.length > 0
+        ) {
           setQueueState((prev) =>
-            replaceUpcomingQueue(prev, candidates, settingsRef.current, 20)
+            getCurrentTrack(prev)?.videoId === seed.videoId
+              ? replaceUpcomingQueue(prev, candidates, settingsRef.current, 20)
+              : prev
           );
         }
+        if (recommendationGate.valid(ticket) && !candidates.length)
+          showToast(
+            "Belum ada kandidat baru yang sesuai. Coba lagi nanti atau ubah filter."
+          );
       } catch {
-        // ignore
+        if (recommendationGate.valid(ticket))
+          showToast("Rekomendasi belum dapat dimuat. Coba lagi.");
       } finally {
-        setUpNextRefreshing(false);
+        if (recommendationGate.valid(ticket)) setUpNextRefreshing(false);
       }
     },
-    [buildUpNextCandidates, queueState]
+    [buildUpNextCandidates, queueState, recommendationGate, showToast]
   );
+
+  const preferenceRefreshKey = personalization.state.events
+    .filter((e) =>
+      [
+        "listen",
+        "complete",
+        "replay",
+        "like",
+        "playlist",
+        "not_interested",
+        "block_artist",
+        "import",
+      ].includes(e.kind)
+    )
+    .map((e) => e.id)
+    .join("|");
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!settingsRef.current.autoContinueRadio) return;
+      // Explicit safety choices may remove even the pinned automatic next.
+      setQueueState((prev) => {
+        const safe = new Set(
+          safeTracks(
+            prev.queue,
+            tasteStore.state,
+            settingsRef.current.hideVideoSongs
+          ).map(trackKey)
+        );
+        const auto = new Set(prev.automaticIds || []);
+        const queue = prev.queue.filter(
+          (t, i) =>
+            i <= prev.currentIndex ||
+            !auto.has(trackKey(t)) ||
+            safe.has(trackKey(t))
+        );
+        const ids = new Set(queue.map(trackKey));
+        return {
+          ...prev,
+          queue,
+          originalQueue: prev.originalQueue.filter((t) => ids.has(trackKey(t))),
+          automaticIds: (prev.automaticIds || []).filter((id) => ids.has(id)),
+        };
+      });
+      const seed = getCurrentTrack(queueStateRef.current);
+      if (!seed) return;
+      const ticket = recommendationGate.next();
+      void buildUpNextCandidates(seed, upNextModeRef.current).then(
+        (candidates) => {
+          if (
+            !recommendationGate.valid(ticket) ||
+            !settingsRef.current.autoContinueRadio
+          )
+            return;
+          setQueueState((prev) =>
+            getCurrentTrack(prev)?.videoId === seed.videoId
+              ? graduallyRefreshAutomaticQueue(
+                  prev,
+                  candidates,
+                  settingsRef.current,
+                  4
+                )
+              : prev
+          );
+        }
+      );
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [
+    preferenceRefreshKey,
+    tasteStore,
+    buildUpNextCandidates,
+    recommendationGate,
+  ]);
 
   const setUpNextMode = useCallback(
     (mode: UpNextMode) => {
@@ -1931,7 +2378,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       if (minutes === null) {
         sleepDeadlineRef.current = null;
         if (!sleepEndOfTrackRef.current) {
-          showToast('Sleep timer cancelled');
+          showToast("Sleep timer cancelled");
         }
       } else {
         sleepEndOfTrackRef.current = false;
@@ -1950,187 +2397,214 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       if (enabled) {
         setSleepTimerMinutes(null);
         sleepDeadlineRef.current = null;
-        showToast('Will pause at end of current track');
+        showToast("Will pause at end of current track");
       } else {
-        showToast('End-of-track sleep timer cancelled');
+        showToast("End-of-track sleep timer cancelled");
       }
     },
     [showToast]
   );
 
   const isLiked = useCallback(
-    (videoId: string) => likedTracks.some((t) => t.videoId === videoId),
-    [likedTracks]
+    (videoId: string) =>
+      libraryOwner === userId && likedTracks.some((t) => t.videoId === videoId),
+    [likedTracks, libraryOwner, userId]
   );
 
   const toggleLike = useCallback(
-    (track: Track) => {
-      if (!requireAuth('Login dulu yuk biar lagu ini tersimpan di Liked Songs kamu.')) return;
-      setLikedTracks((prev) => {
-        const exists = prev.some((t) => t.videoId === track.videoId);
-        const next = exists
-          ? prev.filter((t) => t.videoId !== track.videoId)
-          : [track, ...prev];
-        saveLikedTracks(next);
-        if (userId) void setOwnLikedTrackInCloud(userId, track, !exists);
-        showToast(exists ? 'Removed from Liked Songs' : 'Added to Liked Songs');
-        return next;
-      });
+    async (track: Track) => {
+      if (
+        !requireAuth(
+          "Login dulu yuk biar lagu ini tersimpan di Liked Songs kamu."
+        ) ||
+        !userId ||
+        libraryOwner !== userId ||
+        libraryBusyRef.current
+      )
+        return;
+      const exists = likedTracks.some((t) => t.videoId === track.videoId);
+      libraryBusyRef.current = true;
+      libraryRequestRef.current++;
+      setLibraryLoading(false);
+      setLibrarySaving(true);
+      try {
+        if (!navigator.onLine)
+          throw new Error("Offline. Lagu disukai belum tersimpan.");
+        await setOwnLikedTrackInCloud(userId, track, !exists);
+        if (userIdRef.current !== userId) return;
+        setLikedTracks((previous) =>
+          exists
+            ? previous.filter((t) => t.videoId !== track.videoId)
+            : [track, ...previous]
+        );
+        if (!exists) tasteStore.record(track, "like");
+        showToast(
+          exists ? "Dihapus dari Lagu Disukai" : "Tersimpan di Lagu Disukai"
+        );
+      } catch (error) {
+        if (userIdRef.current === userId)
+          setLibraryError(
+            error instanceof Error
+              ? error.message
+              : "Gagal menyimpan lagu disukai."
+          );
+      } finally {
+        libraryBusyRef.current = false;
+        setLibrarySaving(false);
+        if (userIdRef.current !== userId)
+          window.dispatchEvent(new Event("focus"));
+      }
     },
-    [requireAuth, showToast, userId]
+    [requireAuth, userId, libraryOwner, likedTracks, showToast, tasteStore]
   );
 
-  const createPlaylist = useCallback(
-    (name: string, description?: string, initialTracks: Track[] = []) => {
-      if (!requireAuth('Login dulu yuk buat bikin playlist kamu sendiri.')) {
-        return {
-          id: 'login-required',
-          name: name.trim() || 'Untitled Playlist',
-          description: description?.trim() || '',
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          tracks: initialTracks,
-        } as UserPlaylist;
+  const persistPlaylist = useCallback(
+    async (playlist: UserPlaylist): Promise<UserPlaylist | null> => {
+      if (
+        !requireAuth() ||
+        !userId ||
+        libraryOwner !== userId ||
+        userIdRef.current !== userId
+      )
+        return null;
+      if (libraryBusyRef.current) {
+        showToast("Tunggu penyimpanan sebelumnya selesai.");
+        return null;
       }
+      libraryBusyRef.current = true;
+      libraryRequestRef.current++;
+      setLibraryLoading(false);
+      setLibrarySaving(true);
+      setLibraryError(null);
+      try {
+        if (!navigator.onLine)
+          throw new Error("Offline. Perubahan belum disimpan.");
+        const saved = await upsertOwnPlaylistToCloud(userId, playlist);
+        if (userIdRef.current !== userId) return null;
+        setPlaylists((prev) => [
+          saved,
+          ...prev.filter((p) => p.id !== saved.id),
+        ]);
+        const before = playlistsRef.current.find((p) => p.id === saved.id);
+        for (const track of saved.tracks)
+          if (!before?.tracks.some((t) => t.videoId === track.videoId))
+            tasteStore.record(track, "playlist");
+        showToast("Playlist tersimpan");
+        return saved;
+      } catch (error) {
+        if (userIdRef.current === userId) {
+          setLibraryError(
+            error instanceof Error ? error.message : "Playlist belum tersimpan."
+          );
+          showToast("Gagal menyimpan playlist. Muat ulang lalu coba lagi.");
+        }
+        return null;
+      } finally {
+        libraryBusyRef.current = false;
+        setLibrarySaving(false);
+        if (userIdRef.current !== userId)
+          window.dispatchEvent(new Event("focus"));
+      }
+    },
+    [libraryOwner, requireAuth, showToast, userId, tasteStore]
+  );
+  const createPlaylist = useCallback(
+    async (name: string, description = "", initialTracks: Track[] = []) => {
       const now = Date.now();
-      const created: UserPlaylist = {
-        id: `pl-${now}-${Math.random().toString(36).slice(2, 6)}`,
-        name: name.trim() || 'Untitled Playlist',
-        description: description?.trim() || '',
+      return persistPlaylist({
+        id: crypto.randomUUID(),
+        name: name.trim() || "Playlist baru",
+        description,
+        tracks: initialTracks,
         createdAt: now,
         updatedAt: now,
-        tracks: initialTracks,
-      };
-      setPlaylists((prev) => {
-        const next = [created, ...prev];
-        savePlaylists(next);
-        return next;
+        isPublic: false,
       });
-      if (userId) void upsertOwnPlaylistToCloud(userId, created);
-      showToast(`Created playlist "${created.name}"`);
-      return created;
     },
-    [requireAuth, showToast, userId]
+    [persistPlaylist]
   );
-
+  const editPlaylist = useCallback(
+    (id: string, patch: Partial<UserPlaylist>) => {
+      const playlist = playlists.find((p) => p.id === id);
+      if (playlist)
+        void persistPlaylist({ ...playlist, ...patch, id: playlist.id });
+    },
+    [persistPlaylist, playlists]
+  );
   const renamePlaylist = useCallback(
-    (id: string, name: string) => {
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      setPlaylists((prev) => {
-        let updatedPl: UserPlaylist | null = null;
-        const next = prev.map((pl) => {
-          if (pl.id !== id) return pl;
-          updatedPl = { ...pl, name: trimmed, updatedAt: Date.now() };
-          return updatedPl;
-        });
-        savePlaylists(next);
-        if (userId && updatedPl) void upsertOwnPlaylistToCloud(userId, updatedPl);
-        return next;
-      });
-    },
-    [userId]
+    (id: string, name: string) => editPlaylist(id, { name }),
+    [editPlaylist]
   );
-
   const updatePlaylistTags = useCallback(
-    (playlistId: string, tags: string[]) => {
-      const normalized = Array.from(
-        new Set(
-          tags
-            .map((t) => t.trim())
-            .filter(Boolean)
-            .slice(0, 8)
-        )
-      );
-      setPlaylists((prev) => {
-        let updatedPl: UserPlaylist | null = null;
-        const next = prev.map((pl) => {
-          if (pl.id !== playlistId) return pl;
-          updatedPl = { ...pl, tags: normalized, updatedAt: Date.now() };
-          return updatedPl;
-        });
-        savePlaylists(next);
-        if (userId && updatedPl) void upsertOwnPlaylistToCloud(userId, updatedPl);
-        return next;
-      });
-      showToast('Playlist tags updated');
-    },
-    [showToast, userId]
+    (id: string, tags: string[]) =>
+      editPlaylist(id, {
+        tags: [...new Set(tags.map((t) => t.trim()).filter(Boolean))].slice(
+          0,
+          8
+        ),
+      }),
+    [editPlaylist]
   );
-
   const deletePlaylist = useCallback(
-    (id: string) => {
-      setPlaylists((prev) => {
-        const next = prev.filter((pl) => pl.id !== id);
-        savePlaylists(next);
-        return next;
-      });
-      if (userId) void deleteOwnPlaylistFromCloud(userId, id);
-      if (detailTarget?.kind === 'user-playlist' && detailTarget.id === id) {
+    async (id: string) => {
+      if (!userId || libraryOwner !== userId || libraryBusyRef.current) return;
+      libraryBusyRef.current = true;
+      libraryRequestRef.current++;
+      setLibraryLoading(false);
+      setLibrarySaving(true);
+      try {
+        if (!navigator.onLine)
+          throw new Error("Offline. Playlist belum dihapus.");
+        await deleteOwnPlaylistFromCloud(userId, id);
+        if (userIdRef.current !== userId) return;
+        setPlaylists((prev) => prev.filter((p) => p.id !== id));
         setDetailTarget(null);
+        showToast("Playlist dihapus");
+      } catch (error) {
+        if (userIdRef.current === userId)
+          setLibraryError(
+            error instanceof Error ? error.message : "Gagal menghapus playlist."
+          );
+      } finally {
+        libraryBusyRef.current = false;
+        setLibrarySaving(false);
+        if (userIdRef.current !== userId)
+          window.dispatchEvent(new Event("focus"));
       }
-      showToast('Playlist deleted');
     },
-    [detailTarget, showToast, userId]
+    [libraryOwner, showToast, userId]
   );
-
   const addTrackToPlaylist = useCallback(
-    (playlistId: string, track: Track) => {
-      if (!requireAuth('Login dulu yuk biar bisa nyimpen lagu ke playlist.')) return;
-      setPlaylists((prev) => {
-        let updatedPl: UserPlaylist | null = null;
-        const next = prev.map((pl) => {
-          if (pl.id !== playlistId) return pl;
-          if (pl.tracks.some((t) => t.videoId === track.videoId)) return pl;
-          updatedPl = {
-            ...pl,
-            updatedAt: Date.now(),
-            tracks: [...pl.tracks, track],
-          };
-          return updatedPl;
-        });
-        savePlaylists(next);
-        if (userId && updatedPl) void upsertOwnPlaylistToCloud(userId, updatedPl);
-        return next;
-      });
-      const targetPl = playlists.find((p) => p.id === playlistId);
-      showToast(
-        targetPl ? `Saved to "${targetPl.name}"` : 'Added track to playlist'
-      );
+    (id: string, track: Track) => {
+      const p = playlists.find((p) => p.id === id);
+      if (p && !p.tracks.some((t) => t.videoId === track.videoId))
+        editPlaylist(id, { tracks: [...p.tracks, track] });
     },
-    [playlists, requireAuth, showToast, userId]
+    [editPlaylist, playlists]
   );
-
   const removeTrackFromPlaylist = useCallback(
-    (playlistId: string, videoId: string) => {
-      setPlaylists((prev) => {
-        let updatedPl: UserPlaylist | null = null;
-        const next = prev.map((pl) => {
-          if (pl.id !== playlistId) return pl;
-          updatedPl = {
-            ...pl,
-            updatedAt: Date.now(),
-            tracks: pl.tracks.filter((t) => t.videoId !== videoId),
-          };
-          return updatedPl;
+    (id: string, videoId: string) => {
+      const p = playlists.find((p) => p.id === id);
+      if (p)
+        editPlaylist(id, {
+          tracks: p.tracks.filter((t) => t.videoId !== videoId),
         });
-        savePlaylists(next);
-        if (userId && updatedPl) void upsertOwnPlaylistToCloud(userId, updatedPl);
-        return next;
-      });
     },
-    [userId]
+    [editPlaylist, playlists]
   );
 
   const isSavedInCollection = useCallback(
-    (kind: SavedCollectionItem['kind'], id: string) =>
+    (kind: SavedCollectionItem["kind"], id: string) =>
       savedCollection.some((item) => item.kind === kind && item.id === id),
     [savedCollection]
   );
 
   const toggleSaveCollection = useCallback(
-    (item: Omit<SavedCollectionItem, 'savedAt'>) => {
-      if (!requireAuth('Login dulu yuk buat simpan album & playlist ke Library.')) return;
+    (item: Omit<SavedCollectionItem, "savedAt">) => {
+      if (
+        !requireAuth("Login dulu yuk buat simpan album & playlist ke Library.")
+      )
+        return;
       setSavedCollection((prev) => {
         const exists = prev.some(
           (i) => i.kind === item.kind && i.id === item.id
@@ -2138,8 +2612,8 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         const next = exists
           ? prev.filter((i) => !(i.kind === item.kind && i.id === item.id))
           : [{ ...item, savedAt: Date.now() }, ...prev];
-        saveCollection(next);
-        showToast(exists ? 'Removed from Library' : 'Saved to Library');
+        saveCollection(next, userIdRef.current);
+        showToast(exists ? "Removed from Library" : "Saved to Library");
         return next;
       });
     },
@@ -2150,7 +2624,10 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     const trimmed = query.trim();
     if (!trimmed) return;
     setSearchHistory((prev) => {
-      const next = [trimmed, ...prev.filter((q) => q.toLowerCase() !== trimmed.toLowerCase())].slice(0, 15);
+      const next = [
+        trimmed,
+        ...prev.filter((q) => q.toLowerCase() !== trimmed.toLowerCase()),
+      ].slice(0, 15);
       saveSearchHistory(next);
       return next;
     });
@@ -2168,32 +2645,40 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const clearSearchHistory = useCallback(() => {
     setSearchHistory([]);
     saveSearchHistory([]);
-    showToast('History pencarian dihapus');
+    showToast("History pencarian dihapus");
   }, [showToast]);
 
   const clearPlayHistory = useCallback(() => {
     setHistory([]);
-    saveHistory([]);
-    showToast('Listening history cleared');
+    saveHistory([], userIdRef.current);
+    showToast("Listening history cleared");
   }, [showToast]);
 
-  const updateSettings = useCallback((patch: Partial<PlayerSettings>) => {
-    setSettings((prev) => {
-      const next = { ...prev, ...patch };
-      saveSettings(next);
-      if (patch.playbackRate) {
-        localPlayer.setPlaybackRate(patch.playbackRate);
-        if (ytReadyRef.current && ytPlayerRef.current) {
-          try {
-            ytPlayerRef.current.setPlaybackRate(patch.playbackRate);
-          } catch {
-            // ignore
+  const updateSettings = useCallback(
+    (patch: Partial<PlayerSettings>) => {
+      if (patch.autoContinueRadio === false) {
+        recommendationGate.cancel();
+        setQueueState(removeAutomaticUpcoming);
+        setUpNextRefreshing(false);
+      }
+      setSettings((prev) => {
+        const next = { ...prev, ...patch };
+        saveSettings(next);
+        if (patch.playbackRate) {
+          localPlayer.setPlaybackRate(patch.playbackRate);
+          if (ytReadyRef.current && ytPlayerRef.current) {
+            try {
+              ytPlayerRef.current.setPlaybackRate(patch.playbackRate);
+            } catch {
+              // ignore
+            }
           }
         }
-      }
-      return next;
-    });
-  }, [localPlayer]);
+        return next;
+      });
+    },
+    [localPlayer, recommendationGate]
+  );
 
   const resetSettings = useCallback(() => {
     setSettings(DEFAULT_SETTINGS);
@@ -2206,12 +2691,12 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         // ignore
       }
     }
-    showToast('Preferences reset to Easvarafy defaults');
+    showToast("Preferences reset to Easvarafy defaults");
   }, [showToast, localPlayer]);
 
   const exportLibraryBackup = useCallback(() => {
     const payload = {
-      app: 'Easvarafy',
+      app: "Easvarafy",
       version: 1,
       exportedAt: new Date().toISOString(),
       history,
@@ -2222,50 +2707,78 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       settings,
     };
     return JSON.stringify(payload, null, 2);
-  }, [history, likedTracks, playlists, savedCollection, searchHistory, settings]);
+  }, [
+    history,
+    likedTracks,
+    playlists,
+    savedCollection,
+    searchHistory,
+    settings,
+  ]);
 
   const importLibraryBackup = useCallback(
-    (rawJson: string): { ok: boolean; message: string } => {
+    async (rawJson: string): Promise<{ ok: boolean; message: string }> => {
+      let savedCount = 0;
       try {
         const parsed = JSON.parse(rawJson) as Record<string, unknown>;
-        if (!parsed || typeof parsed !== 'object') {
-          return { ok: false, message: 'Invalid backup JSON file' };
+        if (!parsed || typeof parsed !== "object") {
+          return { ok: false, message: "Invalid backup JSON file" };
         }
-        let importedCount = 0;
+        if (
+          (Array.isArray(parsed.playlists) && parsed.playlists.length) ||
+          (Array.isArray(parsed.likedTracks) && parsed.likedTracks.length)
+        ) {
+          if (!requireAuth() || !userId || libraryOwner !== userId)
+            return {
+              ok: false,
+              message: "Masuk dan sinkronkan library dahulu.",
+            };
+          if (Array.isArray(parsed.playlists))
+            for (const value of parsed.playlists) {
+              const playlist = value as UserPlaylist;
+              const saved = await persistPlaylist({
+                ...playlist,
+                id: crypto.randomUUID(),
+                version: 0,
+                isPublic: false,
+              });
+              if (!saved)
+                return {
+                  ok: false,
+                  message: `Impor terhenti. ${savedCount} playlist sudah tersimpan; sisanya belum diimpor.`,
+                };
+              savedCount++;
+            }
+          if (Array.isArray(parsed.likedTracks))
+            await syncOwnAllLikedTracksToCloud(
+              userId,
+              parsed.likedTracks as Track[]
+            );
+          if (userIdRef.current !== userId)
+            return { ok: false, message: "Akun berubah. Impor dihentikan." };
+          await reloadLibrary();
+        }
+        let importedCount = savedCount;
 
         if (Array.isArray(parsed.history)) {
           const validHistory = parsed.history as PlayEvent[];
           setHistory(validHistory);
-          saveHistory(validHistory);
+          saveHistory(validHistory, userIdRef.current);
           importedCount += validHistory.length;
-        }
-        if (Array.isArray(parsed.likedTracks)) {
-          const validLiked = parsed.likedTracks as Track[];
-          setLikedTracks(validLiked);
-          saveLikedTracks(validLiked);
-          if (userId) void syncOwnAllLikedTracksToCloud(userId, validLiked);
-          importedCount += validLiked.length;
-        }
-        if (Array.isArray(parsed.playlists)) {
-          const validPlaylists = parsed.playlists as UserPlaylist[];
-          setPlaylists(validPlaylists);
-          savePlaylists(validPlaylists);
-          if (userId) void syncOwnAllPlaylistsToCloud(userId, validPlaylists);
-          importedCount += validPlaylists.length;
         }
         if (Array.isArray(parsed.savedCollection)) {
           const validSaved = parsed.savedCollection as SavedCollectionItem[];
           setSavedCollection(validSaved);
-          saveCollection(validSaved);
+          saveCollection(validSaved, userIdRef.current);
         }
         if (Array.isArray(parsed.searchHistory)) {
           const validSearch = parsed.searchHistory.filter(
-            (q): q is string => typeof q === 'string'
+            (q): q is string => typeof q === "string"
           );
           setSearchHistory(validSearch);
           saveSearchHistory(validSearch);
         }
-        if (parsed.settings && typeof parsed.settings === 'object') {
+        if (parsed.settings && typeof parsed.settings === "object") {
           const merged: PlayerSettings = {
             ...DEFAULT_SETTINGS,
             ...(parsed.settings as Partial<PlayerSettings>),
@@ -2277,17 +2790,30 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         const msg =
           importedCount > 0
             ? `Backup restored (${importedCount} items)`
-            : 'Backup settings restored';
+            : "Backup settings restored";
         showToast(msg);
         return { ok: true, message: msg };
-      } catch {
-        return { ok: false, message: 'Could not parse backup file' };
+      } catch (error) {
+        return {
+          ok: false,
+          message: `Impor gagal (${savedCount} playlist tersimpan): ${
+            error instanceof Error ? error.message : "Format tidak valid"
+          }`,
+        };
       }
     },
-    [showToast, userId]
+    [
+      showToast,
+      userId,
+      libraryOwner,
+      persistPlaylist,
+      reloadLibrary,
+      requireAuth,
+    ]
   );
 
   const value: MusicContextValue = {
+    personalization,
     activeTab,
     setActiveTab,
     detailTarget,
@@ -2340,11 +2866,16 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     jumpToQueueIndex,
     lyrics,
     lyricsLoading,
-    history,
-    likedTracks,
+    history: libraryOwner === userId ? history : [],
+    likedTracks: libraryOwner === userId ? likedTracks : [],
     isLiked,
     toggleLike,
-    playlists,
+    playlists: libraryOwner === userId ? playlists : [],
+    libraryLoading,
+    libraryError,
+    librarySaving,
+    reloadLibrary,
+    editPlaylist,
     createPlaylist,
     renamePlaylist,
     updatePlaylistTags,
@@ -2353,7 +2884,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     removeTrackFromPlaylist,
     playlistPickerTrack,
     openPlaylistPicker: setPlaylistPickerTrack,
-    savedCollection,
+    savedCollection: libraryOwner === userId ? savedCollection : [],
     isSavedInCollection,
     toggleSaveCollection,
     searchHistory,

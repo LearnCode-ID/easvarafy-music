@@ -1,10 +1,14 @@
+import {
+  resolveProfileImage,
+  validateProfileFile,
+  cropProfileImage,
+  uploadProfileMedia,
+} from '@/lib/social/profilePage';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import type { Profile, UserRole } from './types';
 
 const PROFILE_COLUMNS = 'id, email, name, avatar_url, role, is_banned, created_at';
-const AVATAR_BUCKET = 'avatars';
-const MAX_AVATAR_UPLOAD_BYTES = 5 * 1024 * 1024;
-const AVATAR_OUTPUT_SIZE = 512;
+const AVATAR_BUCKET = 'profile-media';
 
 /** Fetch the profile row (role included) for a given auth user id. */
 export async function fetchProfile(userId: string): Promise<Profile | null> {
@@ -20,7 +24,12 @@ export async function fetchProfile(userId: string): Promise<Profile | null> {
     console.warn('fetchProfile failed:', error.message);
     return null;
   }
-  return (data as Profile | null) ?? null;
+  if (!data) return null;
+  const profile = data as Profile;
+  return {
+    ...profile,
+    avatar_url: await resolveProfileImage(profile.avatar_url),
+  };
 }
 
 /** Where should this role land after login? */
@@ -73,14 +82,14 @@ export async function ensureProfile(params?: {
     typeof metadata.name === 'string'
       ? metadata.name
       : typeof metadata.full_name === 'string'
-        ? metadata.full_name
-        : null;
+      ? metadata.full_name
+      : null;
   const metaAvatar =
     typeof metadata.avatar_url === 'string'
       ? metadata.avatar_url
       : typeof metadata.picture === 'string'
-        ? metadata.picture
-        : null;
+      ? metadata.picture
+      : null;
 
   const insertPayload = {
     id: user.id,
@@ -134,6 +143,16 @@ export async function updateOwnProfile(patch: {
   }
 
   if (patch.avatar_url !== undefined) {
+    if (
+      patch.avatar_url &&
+      !patch.avatar_url.startsWith('https://') &&
+      !patch.avatar_url.startsWith(`profile-media:${user.id}/`)
+    ) {
+      return {
+        error:
+          'Gunakan URL gambar HTTPS atau unggah gambar. URL preview lokal tidak dapat disimpan.',
+      };
+    }
     dbPatch.avatar_url = patch.avatar_url;
     metaPatch.avatar_url = patch.avatar_url;
   }
@@ -143,7 +162,7 @@ export async function updateOwnProfile(patch: {
     return { profile: current };
   }
 
-  const { data: updated, error } = await supabase
+  const { error } = await supabase
     .from('profiles')
     .update(dbPatch)
     .eq('id', user.id)
@@ -159,71 +178,17 @@ export async function updateOwnProfile(patch: {
     await supabase.auth.updateUser({ data: metaPatch }).catch(() => {});
   }
 
-  return { profile: (updated as Profile | null) ?? (await fetchProfile(user.id)) };
+  return { profile: await fetchProfile(user.id) };
 }
 
-/** Center-crop and resize an image file into a compact square blob for avatar upload. */
-async function prepareAvatarBlob(
-  file: File
-): Promise<{ blob: Blob; ext: string; contentType: string }> {
-  // Keep animated GIFs or SVGs as-is if small enough, or fall back if canvas fails
-  if (file.type === 'image/gif') {
-    return { blob: file, ext: 'gif', contentType: 'image/gif' };
-  }
-
-  if (typeof document === 'undefined') {
-    const ext = file.type.split('/')[1] || 'png';
-    return { blob: file, ext, contentType: file.type || 'image/png' };
-  }
-
+/** Reuse the same validated canvas/compression pipeline as the profile editor. */
+async function prepareAvatarBlob(file: File): Promise<Blob> {
+  const url = URL.createObjectURL(file);
   try {
-    const objectUrl = URL.createObjectURL(file);
-    try {
-      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-        const image = new Image();
-        image.onload = () => resolve(image);
-        image.onerror = () => reject(new Error('Gagal membaca gambar.'));
-        image.src = objectUrl;
-      });
-
-      const size = Math.min(AVATAR_OUTPUT_SIZE, Math.max(img.naturalWidth, img.naturalHeight));
-      const targetSize = Math.max(256, size);
-      const canvas = document.createElement('canvas');
-      canvas.width = targetSize;
-      canvas.height = targetSize;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        const ext = file.type.split('/')[1] || 'png';
-        return { blob: file, ext, contentType: file.type || 'image/png' };
-      }
-
-      const side = Math.min(img.naturalWidth, img.naturalHeight);
-      const sx = (img.naturalWidth - side) / 2;
-      const sy = (img.naturalHeight - side) / 2;
-      ctx.drawImage(img, sx, sy, side, side, 0, 0, targetSize, targetSize);
-
-      const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob((b) => resolve(b), 'image/webp', 0.88)
-      );
-      if (blob) {
-        return { blob, ext: 'webp', contentType: 'image/webp' };
-      }
-
-      const jpegBlob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.88)
-      );
-      if (jpegBlob) {
-        return { blob: jpegBlob, ext: 'jpg', contentType: 'image/jpeg' };
-      }
-    } finally {
-      URL.revokeObjectURL(objectUrl);
-    }
-  } catch {
-    // Fall back to original file
+    return await cropProfileImage(url, 1, 50, 50, 1);
+  } finally {
+    URL.revokeObjectURL(url);
   }
-
-  const ext = file.type.split('/')[1] || 'png';
-  return { blob: file, ext, contentType: file.type || 'image/png' };
 }
 
 /** Delete previously uploaded avatar files in this user's storage folder (best-effort). */
@@ -233,7 +198,7 @@ async function clearPreviousAvatarFiles(userId: string, keepPath?: string): Prom
     if (!files || files.length === 0) return;
     const toRemove = files
       .map((f) => `${userId}/${f.name}`)
-      .filter((p) => p !== keepPath);
+      .filter((p) => p !== keepPath && p.split('/').pop()?.startsWith('avatar-'));
     if (toRemove.length > 0) {
       await supabase.storage.from(AVATAR_BUCKET).remove(toRemove);
     }
@@ -242,18 +207,17 @@ async function clearPreviousAvatarFiles(userId: string, keepPath?: string): Prom
   }
 }
 
-/** Upload an image file to Supabase Storage (`avatars`) and save its public URL on `profiles`. */
+/** Upload to private profile-media storage and save only its object reference. */
 export async function uploadOwnAvatar(
   file: File
 ): Promise<{ profile?: Profile | null; error?: string }> {
   if (!isSupabaseConfigured) {
     return { error: 'Supabase belum dikonfigurasi.' };
   }
-  if (!file.type.startsWith('image/')) {
-    return { error: 'File harus berupa gambar (PNG, JPG, WebP, atau GIF).' };
-  }
-  if (file.size > MAX_AVATAR_UPLOAD_BYTES * 2) {
-    return { error: 'Ukuran file terlalu besar (maksimal 10 MB sebelum kompresi).' };
+  try {
+    validateProfileFile(file);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'File tidak valid.' };
   }
 
   const { data: userData } = await supabase.auth.getUser();
@@ -262,34 +226,18 @@ export async function uploadOwnAvatar(
     return { error: 'Sesi login tidak ditemukan. Silakan masuk ulang.' };
   }
 
-  const { blob, ext, contentType } = await prepareAvatarBlob(file);
-  if (blob.size > MAX_AVATAR_UPLOAD_BYTES) {
-    return { error: 'Ukuran gambar setelah kompresi masih melebihi 5 MB.' };
+  let filePath: string;
+  try {
+    filePath = await uploadProfileMedia(user.id, await prepareAvatarBlob(file), 'avatar');
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : 'Gagal mengunggah avatar.',
+    };
   }
-
-  const filePath = `${user.id}/avatar-${Date.now()}.${ext}`;
-  const { error: uploadError } = await supabase.storage
-    .from(AVATAR_BUCKET)
-    .upload(filePath, blob, {
-      contentType,
-      upsert: true,
-      cacheControl: '3600',
-    });
-
-  if (uploadError) {
-    return { error: uploadError.message || 'Gagal mengunggah avatar ke penyimpanan.' };
-  }
-
-  const { data: urlData } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(filePath);
-  const publicUrl = urlData?.publicUrl;
-  if (!publicUrl) {
-    return { error: 'Gagal mendapatkan URL publik avatar.' };
-  }
-
-  const result = await updateOwnProfile({ avatar_url: publicUrl });
-  if (!result.error) {
-    void clearPreviousAvatarFiles(user.id, filePath);
-  }
+  const result = await updateOwnProfile({
+    avatar_url: `profile-media:${filePath}`,
+  });
+  if (result.error) await supabase.storage.from(AVATAR_BUCKET).remove([filePath]);
   return result;
 }
 
@@ -307,6 +255,7 @@ export async function removeOwnAvatar(): Promise<{
     return { error: 'Sesi login tidak ditemukan. Silakan masuk ulang.' };
   }
 
-  await clearPreviousAvatarFiles(user.id);
-  return updateOwnProfile({ avatar_url: null });
+  const result = await updateOwnProfile({ avatar_url: null });
+  if (!result.error) await clearPreviousAvatarFiles(user.id);
+  return result;
 }

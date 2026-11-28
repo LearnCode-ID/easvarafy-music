@@ -11,6 +11,9 @@ export interface AlbumRef {
 }
 
 export interface Track {
+  /** Existing catalogue IDs are YouTube IDs; future providers must qualify theirs. */
+  provider?: 'youtube';
+  available?: boolean;
   videoId: string;
   title: string;
   artist: string;
@@ -70,6 +73,8 @@ export interface PlayEvent {
 }
 
 export interface UserPlaylist {
+  isPublic?: boolean;
+  version?: number;
   id: string;
   name: string;
   description?: string;
@@ -191,11 +196,12 @@ export interface LyricsPayload {
   source: 'lrclib' | 'ytmusic' | 'none';
 }
 
-export type NavTab = 'home' | 'search' | 'charts' | 'library' | 'listeners' | 'settings';
+export type NavTab = 'home' | 'search' | 'charts' | 'library' | 'listeners' | 'settings' | 'profile';
 
 export type DetailTarget =
   | { kind: 'album'; id: string; title?: string; thumbnail?: string }
   | { kind: 'playlist'; id: string; title?: string; thumbnail?: string }
   | { kind: 'artist'; id: string; title?: string; thumbnail?: string }
   | { kind: 'user-playlist'; id: string }
+  | { kind: 'blend'; id: string }
   | { kind: 'user-profile'; id: string; title?: string; thumbnail?: string };
