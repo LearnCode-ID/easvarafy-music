@@ -31,7 +31,9 @@ const ChartsView = dynamic(() => import("@/components/ChartsView").then(module =
 const DetailView = dynamic(() => import("@/components/DetailView").then(module => module.DetailView), { loading: ScreenLoading });
 const LibraryView = dynamic(() => import("@/components/LibraryView").then(module => module.LibraryView), { loading: ScreenLoading });
 const ListenersView = dynamic(() => import("@/components/ListenersView").then(module => module.ListenersView), { loading: ScreenLoading });
-const NowPlayingSheet = dynamic(() => import("@/components/NowPlayingSheet").then(module => module.NowPlayingSheet));
+// A loading callback gives next/dynamic its own Suspense boundary. Without
+// it, the first track suspends the whole shell up to the route loading screen.
+const NowPlayingSheet = dynamic(() => import("@/components/NowPlayingSheet").then(module => module.NowPlayingSheet), { loading: () => null });
 const SearchView = dynamic(() => import("@/components/SearchView").then(module => module.SearchView), { loading: ScreenLoading });
 const SettingsView = dynamic(() => import("@/components/SettingsView").then(module => module.SettingsView), { loading: ScreenLoading });
 

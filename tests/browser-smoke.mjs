@@ -214,6 +214,121 @@ try {
   await page
     .getByRole("button", { name: "Edit Profil", exact: true })
     .waitFor();
+  for (const width of [320, 390, 1280])
+    for (const theme of ["light", "dark"]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.evaluate(
+        (theme) =>
+          localStorage.setItem(
+            "sonora_settings_v1",
+            JSON.stringify({ theme, pureBlack: false })
+          ),
+        theme
+      );
+      await page.reload({ waitUntil: "networkidle" });
+      const edit = page.getByRole("button", {
+        name: "Edit Profil",
+        exact: true,
+      });
+      await edit.click();
+      const dialog = page.getByRole("dialog", {
+        name: "Edit Profil",
+        exact: true,
+      });
+      await dialog.waitFor();
+      const colors = await dialog.evaluate((el) => {
+        const form = el.querySelector("form");
+        const input = el.querySelector("input");
+        const bounds = form.getBoundingClientRect();
+        const rect = input.getBoundingClientRect();
+        const probe = document.createElement("span");
+        probe.style.backgroundColor = "var(--m3-surface)";
+        probe.style.color = "var(--glass-ink)";
+        document.body.append(probe);
+        const expected = getComputedStyle(probe);
+        const result = {
+          portaled: el.parentElement === document.body,
+          background: getComputedStyle(form).backgroundColor,
+          input: getComputedStyle(input).backgroundColor,
+          expected: expected.backgroundColor,
+          ink: getComputedStyle(form).color,
+          expectedInk: expected.color,
+          visible: input.contains(
+            document.elementFromPoint(
+              rect.x + rect.width / 2,
+              rect.y + rect.height / 2
+            )
+          ),
+          fits:
+            bounds.x >= 0 &&
+            bounds.right <= innerWidth &&
+            bounds.y >= 0 &&
+            bounds.bottom <= innerHeight,
+        };
+        probe.remove();
+        return result;
+      });
+      assert.equal(
+        colors.portaled,
+        true,
+        "profile dialog escapes page stacking contexts"
+      );
+      assert.equal(
+        colors.background,
+        colors.expected,
+        "profile form uses solid theme surface"
+      );
+      assert.equal(
+        colors.ink,
+        colors.expectedInk,
+        "profile foreground keeps theme contrast"
+      );
+      assert.ok(
+        !colors.background.startsWith("rgba") ||
+          colors.background.endsWith(", 1)"),
+        "profile background fully opaque"
+      );
+      assert.ok(
+        !colors.input.startsWith("rgba") || colors.input.endsWith(", 1)"),
+        "profile fields fully opaque"
+      );
+      assert.equal(colors.visible, true, "field is above page/chrome");
+      assert.equal(colors.fits, true, "profile form fits viewport");
+      assert.equal(
+        await page.locator("body").evaluate((el) => el.style.overflow),
+        "hidden"
+      );
+      await page.keyboard.press("Shift+Tab");
+      assert.equal(
+        await dialog
+          .getByRole("button", { name: "Tutup", exact: true })
+          .evaluate((el) => document.activeElement === el),
+        true
+      );
+      await page.keyboard.press("Shift+Tab");
+      assert.equal(
+        await dialog
+          .getByRole("button", { name: "Simpan perubahan", exact: true })
+          .evaluate((el) => document.activeElement === el),
+        true,
+        "focus stays inside modal"
+      );
+      await page.screenshot({
+        path: `.cache/profile-editor-${width}-${theme}.png`,
+      });
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "hidden" });
+      assert.equal(
+        await edit.evaluate((el) => document.activeElement === el),
+        true,
+        "closing profile restores focus"
+      );
+      assert.notEqual(
+        await page.locator("body").evaluate((el) => el.style.overflow),
+        "hidden"
+      );
+    }
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Edit Profil", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Bio", exact: true })
@@ -318,7 +433,7 @@ try {
   await ctx.close();
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: 320/390/1280px, five tabs, login gate, owner editor async save, banner crop/upload/reload, offline save failure, mini-player spacing and persistent stage, reduced motion, privacy revalidation, no browser errors. Browser data are controlled fixtures; authorization tested separately in PostgreSQL."
+    "PASS: 320/390/1280px, opaque light/dark portaled profile editor + focus/scroll lock, five tabs, login gate, owner editor async save, banner crop/upload/reload, offline save failure, mini-player spacing and persistent stage, reduced motion, privacy revalidation, no browser errors. Browser data are controlled fixtures; authorization tested separately in PostgreSQL."
   );
 } finally {
   await browser.close();

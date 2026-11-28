@@ -138,3 +138,59 @@
 .glass-app[data-effects="lite"] .glass-player button { -webkit-backdrop-filter: none; backdrop-filter: none; }
 .glass-app[data-player-open="true"] .glass-ambient { visibility: hidden; }
 .glass-app[data-page-visible="false"] * { animation-play-state: paused !important; }
+
+/* Owned playlists: clean album-first layout, using the user's accent rather
+   than hard-coded Spotify green. No extra blur/canvas on scrolling rows. */
+.user-playlist { max-width: 850px; margin-inline: auto; }
+.user-playlist-hero { position: relative; padding: 0 0 4px; }
+.user-playlist-toolbar { position: absolute; inset: 0 0 auto; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.user-playlist-cover { width: min(52vw, 260px); aspect-ratio: 1; margin-inline: auto; box-shadow: 0 12px 32px rgb(0 0 0 / .18); }
+.playlist-icon { display: inline-flex; align-items: center; justify-content: center; width: 44px; min-width: 44px; height: 44px; border-radius: 999px; color: inherit; }
+.playlist-icon svg { width: 23px; height: 23px; stroke-width: 1.7; }
+.playlist-icon-scrim { background: var(--glass-control); }
+.playlist-icon:disabled, .playlist-play:disabled { opacity: .4; }
+.playlist-mini-cover { width: 36px; height: 46px; border: 1px solid var(--glass-hairline); border-radius: 5px; display: grid; place-items: center; margin-right: 6px; background: var(--glass-card); color: var(--glass-muted); }
+.playlist-play { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 50%; background: var(--m3-primary); color: var(--m3-on-primary); }
+.playlist-play svg { width: 26px; height: 26px; }
+.playlist-icon[aria-pressed="true"] { color: var(--m3-primary); }
+.playlist-chip-row { display: flex; gap: 8px; overflow-x: auto; padding: 12px 2px; scrollbar-width: thin; }
+.playlist-chip { flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; min-height: 38px; border: 1px solid var(--glass-hairline); border-radius: 999px; padding: 7px 13px; font-size: 12px; font-weight: 600; background: var(--glass-control); }
+.playlist-chip svg { width: 16px; height: 16px; stroke-width: 1.7; }
+.playlist-chip[aria-pressed="true"] { color: var(--m3-on-primary-container); background: var(--m3-primary-container); }
+.playlist-chip select option { color: var(--glass-ink); background: var(--m3-surface); }
+.playlist-track-row { display: flex; align-items: center; gap: 6px; min-height: 72px; padding-block: 8px; }
+.playlist-track-list { padding-bottom: 12px; }
+@media (hover: hover) { .playlist-icon:hover, .playlist-track-row:hover { background: var(--glass-control); } }
+@media (min-width: 768px) {
+  .user-playlist-hero { padding-top: 4px; }
+  .user-playlist-cover { width: 300px; }
+  .playlist-track-row { padding-inline: 8px; border-radius: 12px; }
+}
+
+/* Portaled overlays escape card overflow/stacking contexts. Opaque surfaces
+   keep text readable over album art even with reduced transparency/lite mode. */
+.track-context-menu, .profile-editor-overlay {
+  color: var(--glass-ink);
+  font-family: -apple-system, BlinkMacSystemFont, var(--font-dm-sans), system-ui, sans-serif;
+}
+.track-context-menu {
+  background: var(--m3-surface);
+  border: 1px solid var(--glass-hairline);
+  box-shadow: 0 12px 40px rgb(0 0 0 / .28);
+}
+.track-context-menu button { min-height: 44px; white-space: normal; }
+.track-context-menu :is(button, a):focus-visible { outline: 2px solid var(--m3-primary); outline-offset: -2px; }
+.profile-editor-overlay { background: rgb(0 0 0 / .68); padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+.profile-editor-overlay .profile-editor {
+  background: var(--m3-surface);
+  color: var(--glass-ink);
+  border: 1px solid var(--glass-hairline);
+  border-radius: var(--glass-radius);
+  box-shadow: 0 24px 80px rgb(0 0 0 / .4);
+  overscroll-behavior: contain;
+}
+.profile-editor-overlay .profile-input { background: var(--m3-surface-high); color: var(--glass-ink); border-color: var(--glass-hairline); }
+.profile-editor-overlay .text-\[var\(--m3-on-surface-variant\)\] { color: var(--glass-muted); }
+.profile-editor-overlay button[aria-label="Tutup"] { min-width: 44px; min-height: 44px; display: grid; place-items: center; border-radius: 999px; }
+
+.profile-editor-heading { position: sticky; top: -1.25rem; z-index: 1; margin: -1.25rem -1.25rem 0; padding: 1rem 1.25rem; background: var(--m3-surface); border-bottom: 1px solid var(--glass-hairline); }

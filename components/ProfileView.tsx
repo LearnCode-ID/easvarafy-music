@@ -1,5 +1,6 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Camera,
@@ -12,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "./auth/AuthProvider";
-import { ProfileSocialControls } from './FollowControls';
+import { ProfileSocialControls } from "./FollowControls";
 import { VerifiedBadge } from "./auth/VerifiedBadge";
 import { useMusic } from "./MusicProvider";
 import { supabase } from "@/lib/supabase";
@@ -185,7 +186,9 @@ function ProfileViewContent({ userId }: { userId: string }) {
             ? "Pemilik membatasi akses ke profil dan playlistnya."
             : "Periksa kembali URL profil ini."}
         </p>
-        {data?.status === "private" && <ProfileSocialControls targetId={userId} />}
+        {data?.status === "private" && (
+          <ProfileSocialControls targetId={userId} />
+        )}
       </section>
     );
   const visiblePlaylists = own
@@ -498,6 +501,9 @@ function ProfileEditor({
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const busyRef = useRef(false);
+  const closeRef = useRef(onClose);
   const [name, setName] = useState(data.name || "");
   const [bio, setBio] = useState(data.bio || "");
   const [privacy, setPrivacy] = useState({
@@ -521,6 +527,63 @@ function ProfileEditor({
   useBackHandler(true, () => {
     if (!busy) onClose();
   });
+  useEffect(() => {
+    busyRef.current = busy;
+    closeRef.current = onClose;
+  }, [busy, onClose]);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialog
+      .querySelector<HTMLInputElement>("input")
+      ?.focus({ preventScroll: true });
+    const keys = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!busyRef.current) closeRef.current();
+      }
+      if (event.key !== "Tab") return;
+      const items = [
+        ...dialog.querySelectorAll<HTMLElement>(
+          "button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled)"
+        ),
+      ].filter(
+        (item) => !item.matches(":disabled") && item.getClientRects().length
+      );
+      if (!items.length) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = items[0],
+        last = items[items.length - 1];
+      if (
+        event.shiftKey &&
+        (document.activeElement === first ||
+          !items.includes(document.activeElement as HTMLElement))
+      ) {
+        event.preventDefault();
+        last.focus();
+      } else if (
+        !event.shiftKey &&
+        (document.activeElement === last ||
+          !items.includes(document.activeElement as HTMLElement))
+      ) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    dialog.addEventListener("keydown", keys);
+    return () => {
+      document.body.style.overflow = overflow;
+      dialog.removeEventListener("keydown", keys);
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
+    };
+  }, []);
   useEffect(() => () => releaseImage(source), [source]);
   useEffect(() => {
     let cancelled = false;
@@ -622,9 +685,11 @@ function ProfileEditor({
       setBusy(false);
     }
   };
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-3"
+      ref={dialogRef}
+      tabIndex={-1}
+      className="profile-editor-overlay fixed inset-0 z-[110] flex items-center justify-center p-3"
       role="dialog"
       aria-modal="true"
       aria-label="Edit Profil"
@@ -633,7 +698,7 @@ function ProfileEditor({
         onSubmit={save}
         className="profile-editor m3-card w-full max-w-lg max-h-[85dvh] overflow-y-auto p-5 space-y-4"
       >
-        <div className="flex items-center justify-between">
+        <div className="profile-editor-heading flex items-center justify-between">
           <h2 className="font-bold text-xl">Edit Profil</h2>
           <button
             type="button"
@@ -751,7 +816,23 @@ function ProfileEditor({
             yang kembali terlihat ketika profil dipublikasikan lagi. Gambar yang
             sudah diunduh atau disalin orang lain tidak dapat ditarik kembali.
           </p>
-          <label className="flex gap-3 items-start text-sm"><input className="mt-1" type="checkbox" checked={privacy.share_friend_activity} onChange={e=>setPrivacy({...privacy,share_friend_activity:e.target.checked})} /><span>Bagikan lagu terakhir ke pengikut (hanya saat profil publik). Terpisah dari izin statistik agregat.</span></label>
+          <label className="flex gap-3 items-start text-sm">
+            <input
+              className="mt-1"
+              type="checkbox"
+              checked={privacy.share_friend_activity}
+              onChange={(e) =>
+                setPrivacy({
+                  ...privacy,
+                  share_friend_activity: e.target.checked,
+                })
+              }
+            />
+            <span>
+              Bagikan lagu terakhir ke pengikut (hanya saat profil publik).
+              Terpisah dari izin statistik agregat.
+            </span>
+          </label>
           {(["show_stats", "show_streak", "show_badges"] as const).map(
             (key, index) => (
               <label key={key} className="flex gap-3 items-center text-sm">
@@ -791,6 +872,7 @@ function ProfileEditor({
             : "Simpan perubahan"}
         </button>
       </form>
-    </div>
+    </div>,
+    document.body
   );
 }

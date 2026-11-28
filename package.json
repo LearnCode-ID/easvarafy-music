@@ -23,7 +23,8 @@
     "test:browser:recommendations": "node tests/browser-recommendations.mjs",
     "test:browser:downloads": "node tests/browser-downloads.mjs",
     "test:browser:home": "node tests/browser-home-editorial.mjs",
-    "test:browser:glass": "node tests/browser-liquid-glass.mjs"
+    "test:browser:glass": "node tests/browser-liquid-glass.mjs",
+    "test:browser:playlist": "node tests/browser-playlist-player.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.2",

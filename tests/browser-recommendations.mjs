@@ -212,7 +212,11 @@ try {
     .first();
   const label = await action.getAttribute("aria-label");
   await action.click();
-  await personalized
+  await page
+    .getByRole("dialog", {
+      name: label.replace("More actions for ", "Actions for "),
+      exact: true,
+    })
     .getByRole("button", { name: "Tidak tertarik", exact: true })
     .click();
   await page.waitForFunction(() =>

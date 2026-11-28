@@ -92,13 +92,14 @@ export function DynamicIsland() {
 
       {/* Top-Center iPhone 17 / 18 Dynamic Island */}
       <div className="fixed top-2 lg:top-3 left-1/2 -translate-x-1/2 z-[55] pointer-events-none flex justify-center">
-        <AnimatePresence mode="wait">
+        {/* Mount the new state on the same commit; never wait for an exit. */}
+        <AnimatePresence mode="popLayout" initial={false}>
           {expanded && currentTrack ? (
             <motion.section
               key="island-expanded"
               initial={{ opacity: 0, scale: 0.88, y: -8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: -6 }}
+              exit={{ opacity: 0, scale: 0.9, y: -6, pointerEvents: 'none' }}
               transition={{ type: 'spring', stiffness: 420, damping: 32 }}
               aria-label="Dynamic Island expanded player"
               className="pointer-events-auto w-[min(360px,calc(100vw-24px))] rounded-[28px] dynamic-island-glass text-white p-4 space-y-3.5"
@@ -254,19 +255,21 @@ export function DynamicIsland() {
               </div>
             </motion.section>
           ) : toastMessage ? (
-            <motion.div
+            <motion.button
               key="island-toast"
-              role="status"
-              aria-live="polite"
+              type="button"
+              disabled={!currentTrack}
+              onClick={() => setExpanded(true)}
+              aria-label={currentTrack ? `Expand Dynamic Island for ${currentTrack.title}` : undefined}
               initial={{ opacity: 0, scale: 0.9, y: -6 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: -6 }}
+              exit={{ opacity: 0, scale: 0.9, y: -6, pointerEvents: 'none' }}
               transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
               className="pointer-events-auto h-9 px-2.5 rounded-full dynamic-island-glass text-white flex items-center gap-1.5 max-w-[min(184px,calc(100vw-164px))] sm:max-w-[320px]"
             >
               <Disc3 className="w-3.5 h-3.5 text-[var(--m3-primary)] shrink-0" />
-              <span className="text-xs font-medium truncate">{toastMessage}</span>
-            </motion.div>
+              <span role="status" aria-live="polite" className="text-xs font-medium truncate">{toastMessage}</span>
+            </motion.button>
           ) : currentTrack ? (
             <motion.button
               key="island-compact-playing"
@@ -275,7 +278,7 @@ export function DynamicIsland() {
               aria-label={`Expand Dynamic Island for ${currentTrack.title}`}
               initial={{ opacity: 0, scale: 0.92 }}
               animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.92 }}
+              exit={{ opacity: 0, scale: 0.92, pointerEvents: 'none' }}
               transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
               className="pointer-events-auto relative h-9 pl-1.5 pr-2.5 rounded-full dynamic-island-glass text-white flex items-center gap-2 max-w-[min(184px,calc(100vw-164px))] sm:max-w-[270px] hover:scale-[1.02] active:scale-[0.98] transition-transform overflow-hidden"
             >
@@ -335,7 +338,7 @@ export function DynamicIsland() {
               key="island-idle"
               initial={{ opacity: 0, scale: 0.94 }}
               animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.94 }}
+              exit={{ opacity: 0, scale: 0.94, pointerEvents: 'none' }}
               transition={{ duration: 0.18 }}
               aria-label="Dynamic Island idle"
               className="pointer-events-auto h-8 px-3.5 rounded-full dynamic-island-glass text-white/80 flex items-center gap-2"
