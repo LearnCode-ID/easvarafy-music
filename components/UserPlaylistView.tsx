@@ -467,17 +467,6 @@ export function UserPlaylistView({
           )}
           {panel === "menu" && (
             <div className="space-y-2">
-              <button
-                className="profile-button w-full"
-                aria-label="Acak playlist"
-                aria-pressed={queueState.shuffle}
-                disabled={!playlist.tracks.length}
-                onClick={toggleShuffle}
-              >
-                <Shuffle size={18} />
-                Acak playlist
-                {queueState.shuffle && <Check size={16} className="ml-auto" />}
-              </button>
               {canEdit && (
                 <>
                   <button
@@ -509,28 +498,6 @@ export function UserPlaylistView({
               >
                 <ArrowUpDown size={18} />
                 Urutkan lagu
-              </button>
-              <button
-                className="profile-button w-full"
-                onClick={() => setPanel("search")}
-              >
-                <Search size={18} />
-                Cari di playlist
-              </button>
-              <button
-                className="profile-button w-full"
-                disabled={!playlist.tracks.length || downloading}
-                onClick={() => setPanel("download")}
-              >
-                <CircleArrowDown size={18} />
-                Unduh playlist
-              </button>
-              <button
-                className="profile-button w-full"
-                onClick={() => void share()}
-              >
-                <Share2 size={18} />
-                Bagikan playlist
               </button>
             </div>
           )}

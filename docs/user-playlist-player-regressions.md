@@ -49,7 +49,7 @@ Apply this **new migration only**, before releasing the upload UI; historical mi
 
 ## Restored quick actions and direct playlist URLs
 
-Shuffle, Share, Download and Search are again directly accessible next to Play on the playlist hero. Search and download confirmation still use the centered popup. The three-dot popup retains those actions plus owner-only add/edit/details/sorting; the former management-chip row stays removed.
+Shuffle, Share, Download and Search are again directly accessible next to Play on the playlist hero. Search and download confirmation still use the centered popup. The three-dot popup contains only add songs, edit tracks/order, name/cover/details and sorting (editing actions are owner-only). Shuffle, Share, Download and Search are not duplicated inside it; the former management-chip row stays removed.
 
 Opening a saved playlist from Library, Search or a profile now navigates to `/playlist/<id>`, with `/playlist/?id=<id>` as the static Capacitor equivalent. The persistent user layout keeps the existing iframe/audio host and player mounted across navigation. Refreshing/directly visiting a playlist URL loads the same view; tabs and Android back leave the route normally. Web route documents contain no server-rendered private playlist data, and the service worker does not cache playlist route documents.
 
@@ -58,3 +58,5 @@ Route data uses the ordinary Supabase client and existing `user_playlists` RLS (
 Sharing sends only the canonical HTTPS `/playlist/<id>` URL, without a title, track list, or extra message. The system share payload is `{ url }`; clipboard fallback copies exactly that URL. It does not publish the playlist or profile, so existing owner-only/public access rules remain unchanged. `NEXT_PUBLIC_APP_URL`/`NEXT_PUBLIC_API_BASE` must use the production HTTPS origin, as for profile sharing.
 
 Browser fixtures cover each restored quick action, persistent player host across route navigation, direct URLs/reload, query fallback, tab exit, guest public access without editor controls, revoked/private access and malformed URLs. Authorization remains covered separately by the PostgreSQL RLS tests. No live production writes or deployment are performed by these local tests.
+
+Regression guard: with the three-dot popup open, browser tests assert each quick action has exactly one entry point on the page and zero entries in the popup, and check the exact remaining owner-menu action list at 320/390/1280px.
