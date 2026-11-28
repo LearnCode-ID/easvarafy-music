@@ -1,6 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { Profiler } from "react";
+import dynamic from "next/dynamic";
+import { useLiteEffects, usePageVisible } from "@/lib/ui/useLiteEffects";
 import { MotionConfig } from "motion/react";
 import { ArtworkAmbient } from "./ArtworkAmbient";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -8,27 +10,43 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { DailyActivityTracker } from "@/components/DailyActivityTracker";
 import { BlendLanding, BlendReturnBridge } from '@/components/BlendLanding';
 import { LibrarySyncIndicator } from "@/components/LibrarySkeleton";
-import { ProfileView } from "@/components/ProfileView";
-import { ChartsView } from "@/components/ChartsView";
-import { DetailView } from "@/components/DetailView";
 import { DynamicIsland } from "@/components/DynamicIsland";
 import { DynamicIslandPopup } from "@/components/DynamicIslandPopup";
 import { HomeView } from "@/components/HomeView";
-import { LibraryView } from "@/components/LibraryView";
-import { ListenersView } from "@/components/ListenersView";
 import { LiquidGlassFilterDefs } from "@/components/LiquidGlassSurface";
 import { MiniPlayer } from "@/components/MiniPlayer";
 import { MobileBottomTabs, MobileTopBar } from "@/components/MobileNav";
 import { useMusic } from "@/components/MusicProvider";
-import { NowPlayingSheet } from "@/components/NowPlayingSheet";
 import { NotificationTabRouter } from "@/components/notifications/NotificationTabRouter";
 import { OfflineStatusBanner } from "@/components/OfflineStatusBanner";
 import { PlaylistPickerModal } from "@/components/PlaylistPickerModal";
-import { SearchView } from "@/components/SearchView";
-import { SettingsView } from "@/components/SettingsView";
 import { Sidebar } from "@/components/Sidebar";
 
+function ScreenLoading() {
+  return <p role="status" className="m3-card p-5 text-sm">Memuat tampilan…</p>;
+}
+
+const ProfileView = dynamic(() => import("@/components/ProfileView").then(module => module.ProfileView), { loading: ScreenLoading });
+const ChartsView = dynamic(() => import("@/components/ChartsView").then(module => module.ChartsView), { loading: ScreenLoading });
+const DetailView = dynamic(() => import("@/components/DetailView").then(module => module.DetailView), { loading: ScreenLoading });
+const LibraryView = dynamic(() => import("@/components/LibraryView").then(module => module.LibraryView), { loading: ScreenLoading });
+const ListenersView = dynamic(() => import("@/components/ListenersView").then(module => module.ListenersView), { loading: ScreenLoading });
+const NowPlayingSheet = dynamic(() => import("@/components/NowPlayingSheet").then(module => module.NowPlayingSheet));
+const SearchView = dynamic(() => import("@/components/SearchView").then(module => module.SearchView), { loading: ScreenLoading });
+const SettingsView = dynamic(() => import("@/components/SettingsView").then(module => module.SettingsView), { loading: ScreenLoading });
+
+function BrowseContent({ children }: { children: React.ReactNode }) {
+  // Bounded development instrumentation for render-budget regression tests.
+  if (process.env.NODE_ENV === 'production') return children;
+  return <Profiler id="music-browse" onRender={() => {
+    performance.clearMarks('easvarafy:browse-render');
+    performance.mark('easvarafy:browse-render');
+  }}>{children}</Profiler>;
+}
+
 export function EasvarafyShell() {
+  const lite = useLiteEffects();
+  const visible = usePageVisible();
   const auth = useAuth();
   const pathname = usePathname();
   const query = useSearchParams();
@@ -40,7 +58,7 @@ export function EasvarafyShell() {
   const {
     activeTab,
     detailTarget,
-    ytContainerRef,
+    attachYouTubeHost,
     showVideoStage,
     isNowPlayingOpen,
     currentTrack,
@@ -52,10 +70,10 @@ export function EasvarafyShell() {
   } = useMusic();
 
   return (
-    <MotionConfig reducedMotion="user">
-    <div className="glass-app min-h-screen w-full max-w-full overflow-x-clip flex flex-col lg:flex-row relative bg-[var(--m3-bg)] transition-colors duration-200">
+    <MotionConfig reducedMotion={lite ? "always" : "user"}>
+    <div data-effects={lite ? "lite" : "full"} data-page-visible={visible} data-player-open={isNowPlayingOpen} className="glass-app min-h-screen w-full max-w-full overflow-x-clip flex flex-col lg:flex-row relative bg-[var(--m3-bg)] transition-colors duration-200">
       <ArtworkAmbient />
-      {settings.dockStyle === "liquid-glass" && <LiquidGlassFilterDefs />}
+      {!lite && settings.dockStyle === "liquid-glass" && <LiquidGlassFilterDefs />}
       {/* In-Viewport Non-Occluded Video Stage for YouTube IFrame Player API (prevents Android Chrome offscreen iframe audio suspension) */}
       <div
         className={
@@ -65,7 +83,7 @@ export function EasvarafyShell() {
         }
         aria-hidden={!showVideoStage || !isNowPlayingOpen}
       >
-        <div ref={ytContainerRef} data-testid="youtube-stage" className="w-full h-full" />
+        <div ref={attachYouTubeHost} data-testid="youtube-stage" className="w-full h-full" />
       </div>
 
       {/* iPhone 17 / 18 Dynamic Island & Background Popup Engine */}
@@ -103,7 +121,7 @@ export function EasvarafyShell() {
               </button>
             </div>
           )}
-          <div className="glass-content" key={`${activeTab}:${detailTarget?.id || ""}:${pathname}`}>
+          <BrowseContent><div className="glass-content" key={`${activeTab}:${detailTarget?.id || ""}:${pathname}`}>
           {detailTarget ? (
             <DetailView />
           ) : pathname.startsWith('/blend') ? (
@@ -140,13 +158,13 @@ export function EasvarafyShell() {
           ) : (
             <SettingsView />
           )}
-          </div>
+          </div></BrowseContent>
         </main>
       </div>
 
       <MiniPlayer />
       <MobileBottomTabs />
-      <NowPlayingSheet />
+      {currentTrack && <NowPlayingSheet />}
       <PlaylistPickerModal />
     </div>
     </MotionConfig>

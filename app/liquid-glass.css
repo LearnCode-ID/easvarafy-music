@@ -124,3 +124,17 @@
 .glass-auth { background-image: radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--ambient-a) 16%, transparent), transparent 60%), radial-gradient(ellipse at 100% 90%, color-mix(in srgb, var(--ambient-b) 14%, transparent), transparent 55%); }
 
 .glass-app p.opacity-60 { opacity: 1; color: var(--glass-muted); }
+
+/* Mobile/low-memory GPU budget: preserve tint, color, shape and artwork, not
+   repeated full-screen blur, moving backdrops or optical displacement. */
+.glass-app[data-effects="lite"] :is(.glass-surface, .liquid-glass, .liquid-glass-elevated, .glass-topbar),
+.glass-app[data-effects="lite"] [data-liquid-glass-engine] {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: var(--glass-tint);
+}
+.glass-app[data-effects="lite"] :is(.glass-ambient-mesh, .glass-content, .player-animated-gradient, .player-liquid-orb-a, .player-liquid-orb-b) { animation: none; }
+.glass-app[data-effects="lite"] .glass-player-art { box-shadow: 0 10px 28px rgb(0 0 0 / .2); }
+.glass-app[data-effects="lite"] .glass-player button { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.glass-app[data-player-open="true"] .glass-ambient { visibility: hidden; }
+.glass-app[data-page-visible="false"] * { animation-play-state: paused !important; }

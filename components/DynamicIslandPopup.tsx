@@ -18,7 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { ArtworkImage } from './ArtworkImage';
-import { useMusic } from './MusicProvider';
+import { usePlaybackProgress, useMusic } from './MusicProvider';
 import {
   renderDynamicIslandToCanvas,
   resolveBackgroundPopupStrategy,
@@ -57,7 +57,6 @@ function DynamicIslandProSurface({
   const {
     currentTrack,
     isPlaying,
-    currentTime,
     duration,
     togglePlayPause,
     nextTrack,
@@ -69,6 +68,7 @@ function DynamicIslandProSurface({
     setIsNowPlayingOpen,
     setNowPlayingTab,
   } = useMusic();
+  const currentTime = usePlaybackProgress(true);
 
   const activeLyric = useMemo(() => {
     if (!lyrics?.synced || lyrics.lines.length === 0) return null;
@@ -382,7 +382,6 @@ export function DynamicIslandPopup() {
   const {
     currentTrack,
     isPlaying,
-    currentTime,
     duration,
     lyrics,
     settings,
@@ -394,6 +393,7 @@ export function DynamicIslandPopup() {
     registerPopupHandlers,
     showToast,
   } = useMusic();
+  const currentTime = usePlaybackProgress(popupMode === 'video-pip');
 
   const [pipWindow, setPipWindow] = useState<Window | null>(null);
   const [compactOverlay, setCompactOverlay] = useState(false);

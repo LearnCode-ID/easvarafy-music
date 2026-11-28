@@ -15,7 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { ArtworkImage } from './ArtworkImage';
-import { useMusic } from './MusicProvider';
+import { usePlaybackProgress, useMusic } from './MusicProvider';
 import { findActiveLyricIndexWithOffset } from '@/lib/metrolist/lyricsEngine';
 import type {
   AodArtworkShape,
@@ -48,7 +48,6 @@ export function AodPlayerOverlay({ open, onClose }: AodPlayerOverlayProps) {
   const {
     currentTrack,
     isPlaying,
-    currentTime,
     duration,
     togglePlayPause,
     nextTrack,
@@ -57,6 +56,7 @@ export function AodPlayerOverlay({ open, onClose }: AodPlayerOverlayProps) {
     settings,
     updateSettings,
   } = useMusic();
+  const currentTime = usePlaybackProgress(open);
 
   const [now, setNow] = useState<Date>(() => new Date());
   const [touchLocked, setTouchLocked] = useState(false);

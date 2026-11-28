@@ -706,7 +706,7 @@ export function SettingsView() {
                 <div className="min-w-0">
                   <p className="text-[14.5px] font-semibold">Navigation Bar Style</p>
                   <p className="text-[12.5px] opacity-60">
-                    Default (CSS glass) atau Liquid Glass (optical refraction &amp; slide)
+                    Default atau Liquid Glass. Di HP/perangkat terbatas, efek otomatis ringan; warna tetap.
                   </p>
                 </div>
               </div>
