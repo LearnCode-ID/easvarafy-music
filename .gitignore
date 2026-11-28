@@ -10,3 +10,13 @@ out/
 /android/
 assets/
 tsconfig.tsbuildinfo
+
+# Operator-only backups may contain private playlist data.
+.private-backups/
+
+.cache/
+
+# Private Android signing material (store securely outside the repository).
+*.jks
+*.keystore
+*.p12

@@ -189,7 +189,10 @@ function toItems(rows: unknown): InboxItem[] {
     }));
 }
 
+let inboxGeneration = 0;
+
 export async function refreshInbox(): Promise<void> {
+  const generation = inboxGeneration;
   if (!isSupabaseConfigured) return;
   const deviceId = state.deviceId ?? (await getDeviceId());
   setState({ loading: true });
@@ -199,26 +202,41 @@ export async function refreshInbox(): Promise<void> {
       p_limit: 50,
     });
     if (error) throw error;
-    const items = toItems(data);
-    setState({ items, loading: false, loaded: true, error: null });
+    const session = await getSupabase().auth.getSession();
+    let social: InboxItem[] = []; let socialError: string | null = null;
+    if (session.data.session?.user) {
+      const result = await getSupabase().from('social_notifications').select('id,title,body,action_url,created_at,read_at').order('created_at',{ascending:false}).limit(50);
+      if (result.error) socialError = 'Notifikasi sosial belum dapat dimuat. Coba lagi.';
+      else social = toItems((result.data || []).map(r=>({...r,category:'music',image_url:null}))).map(r=>({...r,source:'social'}));
+    }
+    if (generation !== inboxGeneration) return;
+    const items = mergeInbox(toItems(data).map(r=>({...r,source:'broadcast' as const})),social);
+    setState({ items, loading: false, loaded: true, error: socialError });
     // Anything already listed in the inbox should not pop up natively again.
     void nativeMarkSeen(items.map((i) => i.id));
   } catch (err) {
+    if (generation !== inboxGeneration) return;
     setState({ loading: false, loaded: true, error: err instanceof Error ? err.message : 'Gagal memuat notifikasi' });
   }
 }
 
 export async function markNotificationsRead(ids?: string[]): Promise<void> {
-  const target = (ids ?? state.items.filter((i) => !i.read_at).map((i) => i.id)).filter(Boolean);
-  if (target.length === 0 || !state.deviceId) return;
-  const now = new Date().toISOString();
-  setState({
-    items: state.items.map((i) => (target.includes(i.id) && !i.read_at ? { ...i, read_at: now } : i)),
-  });
+  const generation = inboxGeneration;
+  const target = (ids ?? state.items.filter(i=>!i.read_at).map(i=>i.id)).filter(Boolean);
+  if (!target.length || !isSupabaseConfigured) return;
+  const social = target.filter(id=>state.items.find(i=>i.id===id)?.source==='social');
+  const broadcast = target.filter(id=>!social.includes(id));
   try {
-    await getSupabase().rpc('mark_notifications_read', { p_device_id: state.deviceId, p_ids: target });
+    const responses = await Promise.all([
+      ...(social.length ? [getSupabase().rpc('read_social_notifications',{p_ids:social})] : []),
+      ...(broadcast.length && state.deviceId ? [getSupabase().rpc('mark_notifications_read',{p_device_id:state.deviceId,p_ids:broadcast})] : []),
+    ]);
+    if(responses.some(r=>r.error)) throw new Error('Status baca belum tersimpan. Coba lagi.');
+    if(generation!==inboxGeneration) return;
+    const now=new Date().toISOString();
+    setState({items:state.items.map(i=>target.includes(i.id)?{...i,read_at:i.read_at||now}:i)});
   } catch {
-    // Best effort; the local state already shows them as read.
+    if(generation===inboxGeneration) setState({error:'Status baca notifikasi belum tersimpan. Coba lagi.'});
   }
 }
 
@@ -324,6 +342,10 @@ export async function openNotificationTarget(actionUrl: string | null | undefine
     return;
   }
   if (target.kind === 'path') {
+    if (target.path.startsWith('/blend')) {
+      window.dispatchEvent(new CustomEvent('easvarafy:open-blend-path', {detail:{path:target.path}}));
+      return;
+    }
     window.location.assign(target.path);
     return;
   }
@@ -402,6 +424,9 @@ export function bootNotifications(): () => void {
     }
   };
   document.addEventListener('visibilitychange', onVisible);
+  const refreshSocial = () => { if(document.visibilityState==='visible') void refreshInbox(); };
+  window.addEventListener('easvarafy:social-notifications',refreshSocial);
+  const socialTimer=window.setInterval(refreshSocial,30000);
   // Heartbeat + safety refresh while open (realtime can drop on flaky networks).
   const timer = window.setInterval(() => {
     if (document.visibilityState === 'visible') {
@@ -416,11 +441,15 @@ export function bootNotifications(): () => void {
     offOpened();
     document.removeEventListener('visibilitychange', onVisible);
     window.clearInterval(timer);
+    window.clearInterval(socialTimer);
+    window.removeEventListener('easvarafy:social-notifications',refreshSocial);
   };
 }
 
 /** Auth changed (login/logout): re-link the device and reconnect realtime with the new JWT. */
 export function onAuthIdentityChanged() {
+  inboxGeneration++;
+  setState({items:[],incoming:null,loaded:false,error:null});
   if (!booted) return;
   void registerDevice({ force: true }).then(() => restartRealtime());
 }

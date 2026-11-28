@@ -22,7 +22,7 @@ const root = process.cwd();
 const stashRoot = path.join(root, '.static-export-stash');
 
 /** Server-only paths that must not be part of a static export. */
-const SERVER_ONLY = ['app/api', 'app/auth/callback'];
+const SERVER_ONLY = ['app/api', 'app/auth/callback', 'app/(user)/profile/[id_user]', 'app/(user)/playlist/[id_playlist]'];
 
 const moved = [];
 
@@ -49,9 +49,11 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 
 try {
   // Remove stale .next/types so server-only routes moved aside aren't referenced
-  const nextTypesDir = path.join(root, '.next', 'types');
-  if (existsSync(nextTypesDir)) {
-    rmSync(nextTypesDir, { recursive: true, force: true });
+  // Next 16 also writes route validators under .next/dev/types. Both trees
+  // must be removed before server-only routes are temporarily excluded.
+  for (const relative of ['.next/types', '.next/dev/types']) {
+    const nextTypesDir = path.join(root, relative);
+    if (existsSync(nextTypesDir)) rmSync(nextTypesDir, { recursive: true, force: true });
   }
 
   for (const relative of SERVER_ONLY) {
