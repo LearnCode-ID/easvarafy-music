@@ -15,7 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { ArtworkImage } from './ArtworkImage';
-import { useMusic } from './MusicProvider';
+import { usePlaybackProgress, useMusic } from './MusicProvider';
 import { findActiveLyricIndex, formatDuration } from '@/lib/metrolist/lyrics';
 import { cn } from '@/lib/utils';
 import { useNativeIslandStatus } from '@/lib/native/mediaControls';
@@ -25,7 +25,6 @@ export function DynamicIsland() {
   const {
     currentTrack,
     isPlaying,
-    currentTime,
     duration,
     togglePlayPause,
     nextTrack,
@@ -41,6 +40,7 @@ export function DynamicIsland() {
     popupMode,
     toggleBackgroundPopup,
   } = useMusic();
+  const currentTime = usePlaybackProgress(!isNowPlayingOpen);
 
   const [expanded, setExpanded] = useState(false);
   useBackHandler(expanded, () => setExpanded(false));

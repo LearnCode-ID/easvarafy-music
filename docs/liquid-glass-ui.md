@@ -28,6 +28,10 @@ The shared material is scoped to the music application and auth shell, not the o
 
 Follow-up visual correction: glass applies to the surrounding material, not to semantic action colors. Full-player Play/Pause uses `--m3-primary` / `--m3-on-primary` again, in both Classic and Expressive modes. Active default navigation/sidebar uses `--m3-primary-container` / `--m3-on-primary-container`. Existing slider, volume and selected-state accents are preserved; artwork ambient, floating geometry and blur are unchanged. Browser assertions verify the actual computed action colors in light/dark themes, including fixed emerald/violet presets.
 
+## Low-end device adaptation
+
+The later [performance pass](low-end-performance.md) supersedes the original all-device effect defaults below: mobile/constrained devices now keep colors and geometry but use static palette gradients/tints without backdrop blur, SVG refraction or per-frame lyric/wave interpolation. Capable desktops retain 20px/180% glass. Playback progress is isolated from browsing subscriptions. The standard material/palette implementation below still applies, with these adaptive effect limits.
+
 ## Actual artwork colors and fallbacks
 
 `ArtworkAmbient` samples a 32×32 canvas only on artwork URL changes, anonymously and without credentials. Quantized dominant clusters produce up to three actual RGB colors; near-black letterboxes and transparent pixels are ignored. Cache is bounded to 32 palettes. No per-frame sampling, color library, artwork proxy, or guessed artist/track-ID color is used for the ambient palette.
@@ -45,7 +49,7 @@ One shared mesh drifts slowly using transforms, pauses when playback pauses, and
 
 ## Verification
 
-- `npm test`: 117 tests including three artwork-pixel tests and two conservative material-contrast tests.
+- `npm test`: 120 tests including three artwork-pixel tests and two conservative material-contrast tests.
 - `npm run test:database`: 4 local database tests (no remote mutations).
 - `npm run test:browser:glass`: controlled artwork/provider/player fixtures; 320/390/1366 widths, light/dark, default/optical dock, dynamic-color disabled, reduced motion, failed artwork fallback, no page overflow/runtime exceptions. Exercises actual UI handlers for play/pause, previous/next, seek, volume and queue; verifies pixel palette changes and artwork/header geometry.
 - Existing Home, recommendation and Library browser suites passed with fixtures. Large editorial covers and real disjoint ranked queues remain protected.

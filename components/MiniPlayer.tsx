@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useDesktopLayout } from '@/lib/ui/useDesktopLayout';
 import {
   ChevronUp,
   Heart,
@@ -12,15 +13,15 @@ import {
 } from 'lucide-react';
 import { ArtworkImage } from './ArtworkImage';
 import { LiquidGlassBackdropLayer } from './LiquidGlassSurface';
-import { useMusic } from './MusicProvider';
+import { usePlaybackProgress, useMusic } from './MusicProvider';
 import { formatDuration } from '@/lib/metrolist/lyrics';
 
 export function MiniPlayer() {
   const {
     currentTrack,
+    isNowPlayingOpen,
     isPlaying,
     isBuffering,
-    currentTime,
     duration,
     togglePlayPause,
     nextTrack,
@@ -31,6 +32,8 @@ export function MiniPlayer() {
     toggleBackgroundPopup,
     settings,
   } = useMusic();
+  const desktop = useDesktopLayout();
+  const currentTime = usePlaybackProgress(desktop && !isNowPlayingOpen);
 
   if (!currentTrack) return null;
 

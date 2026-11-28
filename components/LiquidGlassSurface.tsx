@@ -12,6 +12,8 @@ import {
   buildLiquidGlassMaps,
 } from '@/lib/liquid-glass/refraction';
 import { cn } from '@/lib/utils';
+import { getLiteEffects } from '@/lib/ui/effects';
+import { useLiteEffects } from '@/lib/ui/useLiteEffects';
 
 interface RegisteredFilterEntry {
   id: string;
@@ -61,7 +63,7 @@ function getServerRegistrySnapshot(): RegisteredFilterEntry[] {
  * Safari & Firefox gracefully fall back to crystal CSS optics.
  */
 function detectChromiumSvgBackdropSupport(): boolean {
-  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined' || getLiteEffects()) {
     return false;
   }
   const ua = navigator.userAgent;
@@ -124,7 +126,7 @@ export function registerLiquidGlassFilter(
   height: number,
   radius?: number
 ): RegisteredFilterEntry | null {
-  if (typeof document === 'undefined' || width < 4 || height < 4) return null;
+  if (typeof document === 'undefined' || getLiteEffects() || width < 4 || height < 4) return null;
 
   const qW = Math.max(4, Math.round(width / 2) * 2);
   const qH = Math.max(4, Math.round(height / 2) * 2);
@@ -202,7 +204,8 @@ export function registerLiquidGlassFilter(
  * Unmounts cleanly when the user switches to `Default` mode in Settings.
  */
 export function LiquidGlassFilterDefs() {
-  const supportsSvgBackdrop = useSyncExternalStore(
+  const lite = useLiteEffects();
+  const chromiumSvgBackdrop = useSyncExternalStore(
     emptySubscribe,
     detectChromiumSvgBackdropSupport,
     () => false
@@ -213,7 +216,7 @@ export function LiquidGlassFilterDefs() {
     getServerRegistrySnapshot
   );
 
-  if (!supportsSvgBackdrop || entries.length === 0) return null;
+  if (lite || !chromiumSvgBackdrop || entries.length === 0) return null;
 
   return (
     <svg
@@ -321,11 +324,13 @@ export function LiquidGlassBackdropLayer({
   borderRadius,
   className,
 }: LiquidGlassBackdropLayerProps) {
-  const supportsSvgBackdrop = useSyncExternalStore(
+  const lite = useLiteEffects();
+  const chromiumSvgBackdrop = useSyncExternalStore(
     emptySubscribe,
     detectChromiumSvgBackdropSupport,
     () => false
   );
+  const supportsSvgBackdrop = !lite && chromiumSvgBackdrop;
   const registryEntries = useSyncExternalStore(
     subscribeRegistry,
     getRegistrySnapshot,
@@ -390,7 +395,7 @@ export function LiquidGlassBackdropLayer({
     registerLiquidGlassFilter(preset, size.width, size.height, effectiveRadius);
   }, [supportsSvgBackdrop, preset, size.width, size.height, effectiveRadius]);
 
-  const activeEntry = filterKey
+  const activeEntry = supportsSvgBackdrop && filterKey
     ? registryEntries.find((e) => e.key === filterKey && e.ready)
     : undefined;
 

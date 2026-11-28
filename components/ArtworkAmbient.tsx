@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type CSSProperties } from 'react';
+import { useLiteEffects, usePageVisible } from '@/lib/ui/useLiteEffects';
 import { useMusic } from './MusicProvider';
 import { paletteFromPixels, type ArtworkPalette } from '@/lib/liquid-glass/palette';
 
@@ -8,7 +9,9 @@ const paletteCache = new Map<string, ArtworkPalette>();
 
 /** One shared, inert ambient layer. No proxy, credentials, or per-card canvas. */
 export function ArtworkAmbient() {
-  const { currentTrack, isPlaying, settings } = useMusic();
+  const lite = useLiteEffects();
+  const visible = usePageVisible();
+  const { currentTrack, isPlaying, settings, isNowPlayingOpen } = useMusic();
   const source = currentTrack?.thumbnail || '';
   const [sample, setSample] = useState<{ source: string; palette: ArtworkPalette } | null>(null);
   const palette = sample?.source === source ? sample.palette : undefined;
@@ -62,8 +65,8 @@ export function ArtworkAmbient() {
   return (
     <div className="glass-ambient" hidden={settings.theme === 'dark' && settings.pureBlack} aria-hidden="true" data-testid="artwork-ambient" data-palette-source={palette && settings.dynamicColor ? 'pixels' : artworkFallback ? 'artwork-fallback' : 'theme'}>
       <div className="glass-ambient-mesh" style={{
-        animationPlayState: isPlaying ? 'running' : 'paused',
-        ...(artworkFallback ? { backgroundImage: `url(${JSON.stringify(source)})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'blur(60px)' } : {}),
+        animationPlayState: isPlaying && visible && !isNowPlayingOpen && !lite ? 'running' : 'paused',
+        ...(artworkFallback && !lite ? { backgroundImage: `url(${JSON.stringify(source)})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'blur(60px)' } : {}),
       } as CSSProperties} />
     </div>
   );

@@ -14,6 +14,7 @@ import {
 } from "@/lib/recommendation/engine";
 import { newSignalId } from "@/lib/recommendation/store";
 import { RequestGate } from "@/lib/recommendation/client";
+import { createSnapshotStore, type SnapshotStore } from "@/lib/ui/snapshotStore";
 import { usePathname, useRouter } from "next/navigation";
 import { isNativeApp } from "@/lib/auth/native";
 import React, {
@@ -24,6 +25,8 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useLayoutEffect,
+  useSyncExternalStore,
 } from "react";
 import {
   advanceQueue,
@@ -277,6 +280,7 @@ interface MusicContextValue {
 
   // YT Player host ref
   ytContainerRef: React.RefObject<HTMLDivElement | null>;
+  attachYouTubeHost: (node: HTMLDivElement | null) => void;
 
   /** 'offline' = current song plays from a downloaded file via <audio>. */
   playbackSource: PlaybackSource;
@@ -284,14 +288,23 @@ interface MusicContextValue {
 
 export type PlaybackSource = "online" | "offline";
 
-const MusicContext = createContext<MusicContextValue | null>(null);
+type MusicState = Omit<MusicContextValue, "currentTime">;
+const MusicContext = createContext<SnapshotStore<MusicState> | null>(null);
+const ProgressContext = createContext<SnapshotStore<number> | null>(null);
+const EMPTY_LIBRARY: never[] = [];
+const noSubscription = () => () => {};
 
-export function useMusic(): MusicContextValue {
-  const ctx = useContext(MusicContext);
-  if (!ctx) {
-    throw new Error("useMusic must be used inside MusicProvider");
-  }
-  return ctx;
+export function useMusic(): MusicState {
+  const store = useContext(MusicContext);
+  if (!store) throw new Error("useMusic must be used inside MusicProvider");
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
+}
+
+/** Only visible time displays subscribe to the 250ms clock, not the whole app. */
+export function usePlaybackProgress(enabled = true): number {
+  const store = useContext(ProgressContext);
+  if (!store) throw new Error("usePlaybackProgress must be used inside MusicProvider");
+  return useSyncExternalStore(enabled ? store.subscribe : noSubscription, enabled ? store.getSnapshot : () => 0, () => 0);
 }
 
 export function MusicProvider({ children }: { children: React.ReactNode }) {
@@ -356,6 +369,8 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const playbackTimeRef = useRef(0);
+  useLayoutEffect(() => { playbackTimeRef.current = currentTime; }, [currentTime]);
   const [duration, setDuration] = useState(0);
   const [volume, setVolumeState] = useState(85);
   const [isMuted, setIsMuted] = useState(false);
@@ -394,6 +409,11 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   });
 
   const ytContainerRef = useRef<HTMLDivElement | null>(null);
+  const [ytHostReady, setYtHostReady] = useState(false);
+  const attachYouTubeHost = useCallback((node: HTMLDivElement | null) => {
+    ytContainerRef.current = node;
+    setYtHostReady(Boolean(node));
+  }, []);
   const ytPlayerRef = useRef<YTPlayerInstance | null>(null);
   const ytReadyRef = useRef(false);
   const lastLoadedVideoIdRef = useRef<string | null>(null);
@@ -797,7 +817,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
 
   // Initialize YouTube IFrame Player API lazily
   useEffect(() => {
-    if (typeof window === "undefined" || !hydrated) return;
+    if (typeof window === "undefined" || !hydrated || !ytHostReady) return;
 
     const initPlayer = () => {
       if (!ytContainerRef.current || ytPlayerRef.current || !window.YT?.Player)
@@ -950,7 +970,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       tag.async = true;
       document.head.appendChild(tag);
     }
-  }, [resumePlaybackKeepAlive, showToast, hydrated]);
+  }, [resumePlaybackKeepAlive, showToast, hydrated, ytHostReady]);
 
   const buildUpNextCandidates = useCallback(
     async (seedTrack: Track, mode: UpNextMode): Promise<Track[]> => {
@@ -1916,7 +1936,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   }, [nextTrack]);
 
   const prevTrack = useCallback(() => {
-    if (currentTime > 4) {
+    if (playbackTimeRef.current > 4) {
       setCurrentTime(0);
       getActivePlayer()?.seekTo(0, true);
       return;
@@ -1930,7 +1950,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       setIsPlaying(!stayPaused);
       return res.state;
     });
-  }, [currentTime, getActivePlayer]);
+  }, [getActivePlayer]);
 
   const seekTo = useCallback(
     (seconds: number) => {
@@ -1998,11 +2018,11 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       );
       navigator.mediaSession.setActionHandler("seekbackward", (details) => {
         const offset = details.seekOffset ?? 10;
-        seekTo(Math.max(0, currentTime - offset));
+        seekTo(Math.max(0, playbackTimeRef.current - offset));
       });
       navigator.mediaSession.setActionHandler("seekforward", (details) => {
         const offset = details.seekOffset ?? 10;
-        seekTo(Math.min(duration || 210, currentTime + offset));
+        seekTo(Math.min(duration || 210, playbackTimeRef.current + offset));
       });
       navigator.mediaSession.setActionHandler("seekto", (details) => {
         if (typeof details.seekTime === "number") {
@@ -2021,7 +2041,6 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     nextTrack,
     prevTrack,
     seekTo,
-    currentTime,
     duration,
   ]);
 
@@ -2841,7 +2860,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     ]
   );
 
-  const value: MusicContextValue = {
+  const value: MusicState = {
     personalization,
     activeTab,
     setActiveTab,
@@ -2851,7 +2870,6 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     currentTrack,
     isPlaying,
     isBuffering,
-    currentTime,
     duration,
     volume,
     isMuted,
@@ -2895,11 +2913,11 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     jumpToQueueIndex,
     lyrics,
     lyricsLoading,
-    history: libraryOwner === userId ? history : [],
-    likedTracks: libraryOwner === userId ? likedTracks : [],
+    history: libraryOwner === userId ? history : EMPTY_LIBRARY,
+    likedTracks: libraryOwner === userId ? likedTracks : EMPTY_LIBRARY,
     isLiked,
     toggleLike,
-    playlists: libraryOwner === userId ? playlists : [],
+    playlists: libraryOwner === userId ? playlists : EMPTY_LIBRARY,
     libraryLoading,
     libraryError,
     librarySaving,
@@ -2913,7 +2931,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     removeTrackFromPlaylist,
     playlistPickerTrack,
     openPlaylistPicker: setPlaylistPickerTrack,
-    savedCollection: libraryOwner === userId ? savedCollection : [],
+    savedCollection: libraryOwner === userId ? savedCollection : EMPTY_LIBRARY,
     isSavedInCollection,
     toggleSaveCollection,
     searchHistory,
@@ -2929,11 +2947,31 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     toastMessage,
     showToast,
     ytContainerRef,
+    attachYouTubeHost,
     playbackSource,
   };
 
+  // Snapshot storage retains ytContainerRef as an opaque object; it never reads
+  // .current during render (all player DOM access remains in effects/handlers).
+  // eslint-disable-next-line react-hooks/refs
+  const [musicStore] = useState(() => createSnapshotStore(value));
+  const [progressStore] = useState(() => createSnapshotStore(currentTime));
+  useLayoutEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      const previous = musicStore.getSnapshot();
+      const changed = (Object.keys(value) as Array<keyof MusicState>).filter(key => !Object.is(previous[key], value[key]));
+      if (changed.length) {
+        performance.clearMarks('easvarafy:music-change');
+        performance.mark('easvarafy:music-change', { detail: changed });
+      }
+    }
+    musicStore.publish(value);
+    progressStore.publish(currentTime);
+  });
+
   return (
-    <MusicContext.Provider value={value}>
+    <MusicContext.Provider value={musicStore}>
+    <ProgressContext.Provider value={progressStore}>
       {children}
       {/* Offline engine: plays downloaded songs (local file / blob URL). */}
       <audio
@@ -2944,6 +2982,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         className="hidden"
         data-testid="offline-audio"
       />
+    </ProgressContext.Provider>
     </MusicContext.Provider>
   );
 }

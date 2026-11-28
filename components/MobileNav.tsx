@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useDesktopLayout } from '@/lib/ui/useDesktopLayout';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Compass,
@@ -22,7 +23,7 @@ import {
   LiquidGlassBackdropLayer,
   registerLiquidGlassFilter,
 } from './LiquidGlassSurface';
-import { useMusic } from './MusicProvider';
+import { usePlaybackProgress, useMusic } from './MusicProvider';
 import { NotificationBell } from './notifications/NotificationBell';
 import type { NavTab } from '@/lib/metrolist/types';
 import { cn } from '@/lib/utils';
@@ -117,9 +118,9 @@ export function MobileBottomTabs() {
     detailTarget,
     openDetail,
     currentTrack,
+    isNowPlayingOpen,
     isPlaying,
     isBuffering,
-    currentTime,
     duration,
     togglePlayPause,
     nextTrack,
@@ -131,6 +132,8 @@ export function MobileBottomTabs() {
     playTrack,
     settings,
   } = useMusic();
+  const desktop = useDesktopLayout();
+  const currentTime = usePlaybackProgress(!desktop && !isNowPlayingOpen);
 
   const isLiquidGlass = settings.dockStyle === 'liquid-glass';
 

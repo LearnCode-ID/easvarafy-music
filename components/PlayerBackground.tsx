@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useLiteEffects } from '@/lib/ui/useLiteEffects';
 import type { PlayerBackgroundStyle, ThemeMode } from '@/lib/metrolist/types';
 import { cn } from '@/lib/utils';
 
@@ -20,13 +21,19 @@ interface PlayerBackgroundProps {
  * - ANIMATED_GRADIENT: Gently breathing phase-shifting gradient wash
  * - LIQUID: Flowing multi-orb liquid artwork aurora mesh
  */
-export function PlayerBackground({
+export const PlayerBackground = React.memo(function PlayerBackground({
   style,
   thumbnail,
   isPlaying,
   theme,
 }: PlayerBackgroundProps) {
+  const lite = useLiteEffects();
   const isDark = theme === 'dark';
+
+  if (lite && style !== 'SOLID') return (
+    <div aria-hidden="true" data-testid="player-background" data-player-bg={style} data-player-bg-renderer="lite" className="pointer-events-none absolute inset-0"
+      style={{ background: 'radial-gradient(ellipse at 15% 0%, color-mix(in srgb, var(--ambient-a) 22%, transparent), transparent 65%), radial-gradient(ellipse at 95% 65%, color-mix(in srgb, var(--ambient-b) 14%, transparent), transparent 60%), var(--m3-bg)' }} />
+  );
 
   return (
     <div
@@ -151,4 +158,4 @@ export function PlayerBackground({
       )}
     </div>
   );
-}
+});

@@ -41,7 +41,7 @@ import { ArtworkImage } from './ArtworkImage';
 import { EqualizerSheet, SleepTimerSheet } from './AudioToolsModals';
 import { LyricsShareModal } from './LyricsShareModal';
 import { DownloadButton } from './DownloadButton';
-import { useMusic, type UpNextMode } from './MusicProvider';
+import { usePlaybackProgress, useMusic, type UpNextMode } from './MusicProvider';
 import { PlayerBackground } from './PlayerBackground';
 import { PlayerSlider } from './PlayerSlider';
 import { SyncedLyricsView } from './SyncedLyricsView';
@@ -60,7 +60,6 @@ export function NowPlayingSheet() {
     currentTrack,
     isPlaying,
     isBuffering,
-    currentTime,
     duration,
     volume,
     isMuted,
@@ -100,6 +99,7 @@ export function NowPlayingSheet() {
     toggleBackgroundPopup,
     playbackSource,
   } = useMusic();
+  const currentTime = usePlaybackProgress(isNowPlayingOpen);
 
   // Android back: lyrics/queue -> player view -> close the full player.
   useBackHandler(isNowPlayingOpen, () => {

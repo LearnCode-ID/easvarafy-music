@@ -32,7 +32,7 @@ function hashString(input: string): number {
   return Math.abs(hash);
 }
 
-export function ArtworkImage({
+export const ArtworkImage = React.memo(function ArtworkImage({
   src: rawSrc,
   alt,
   className,
@@ -122,4 +122,4 @@ export function ArtworkImage({
       )}
     </div>
   );
-}
+});
