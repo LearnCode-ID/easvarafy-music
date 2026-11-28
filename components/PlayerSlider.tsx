@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { buildSquigglyWavePath } from '@/lib/metrolist/lyricsEngine';
 import type { SliderStyle } from '@/lib/metrolist/types';
+import { useLiteEffects, usePageVisible } from '@/lib/ui/useLiteEffects';
 import { cn } from '@/lib/utils';
 
 interface PlayerSliderProps {
@@ -31,6 +32,8 @@ export function PlayerSlider({
   onSeek,
   className,
 }: PlayerSliderProps) {
+  const lite = useLiteEffects();
+  const visible = usePageVisible();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pathRef = useRef<SVGPathElement | null>(null);
 
@@ -83,7 +86,7 @@ export function PlayerSlider({
 
   // 60fps imperative SVG path animator for SQUIGGLY & WAVY modes
   useEffect(() => {
-    if (style !== 'SQUIGGLY' && style !== 'WAVY') return;
+    if ((style !== 'SQUIGGLY' && style !== 'WAVY') || lite || !visible || !isPlaying || isDragging) return;
 
     let rafId = 0;
     let lastTs = performance.now();
@@ -138,7 +141,7 @@ export function PlayerSlider({
 
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, [style]);
+  }, [style, lite, visible, isPlaying, isDragging]);
 
   // Initial SSR/first-frame path for SQUIGGLY / WAVY so it never flashes blank
   const initialWavePath =

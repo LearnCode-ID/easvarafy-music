@@ -1,17 +1,15 @@
-import { createInitialSeedState, DEFAULT_SETTINGS } from './seed';
-import type { PlayEvent, PlayerSettings, Track, UserPlaylist } from './types';
+import { DEFAULT_SETTINGS } from "./seed";
+import type { PlayEvent, PlayerSettings, Track, UserPlaylist } from "./types";
 
 const KEYS = {
-  HISTORY: 'sonora_play_history_v1',
-  LIKED: 'sonora_liked_tracks_v1',
-  PLAYLISTS: 'sonora_user_playlists_v1',
-  SETTINGS: 'sonora_settings_v1',
-  SEARCH_HISTORY: 'sonora_search_history_v1',
-  SAVED_COLLECTION: 'sonora_saved_collection_v1',
+  HISTORY: "sonora_play_history_v1",
+  SETTINGS: "sonora_settings_v1",
+  SEARCH_HISTORY: "sonora_search_history_v1",
+  SAVED_COLLECTION: "sonora_saved_collection_v1",
 };
 
 export interface SavedCollectionItem {
-  kind: 'album' | 'playlist' | 'artist';
+  kind: "album" | "playlist" | "artist";
   id: string;
   title: string;
   subtitle: string;
@@ -28,6 +26,16 @@ export interface PersistedLibraryState {
   savedCollection: SavedCollectionItem[];
 }
 
+function safeGet(key: string): string | null {
+  try {
+    return typeof window === "undefined"
+      ? null
+      : window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;
   try {
@@ -38,96 +46,44 @@ function safeParse<T>(raw: string | null, fallback: T): T {
 }
 
 export function loadLibraryState(): PersistedLibraryState {
-  if (typeof window === 'undefined') {
-    const seed = createInitialSeedState();
-    return {
-      ...seed,
-      settings: DEFAULT_SETTINGS,
-      searchHistory: ['Daft Punk', 'The Weeknd', 'Lofi Chill'],
-      savedCollection: [],
-    };
-  }
-
-  const hasExisting =
-    window.localStorage.getItem(KEYS.PLAYLISTS) !== null ||
-    window.localStorage.getItem(KEYS.HISTORY) !== null;
-
-  if (!hasExisting) {
-    const seed = createInitialSeedState();
-    saveHistory(seed.history);
-    saveLikedTracks(seed.likedTracks);
-    savePlaylists(seed.playlists);
-    saveSettings(DEFAULT_SETTINGS);
-    saveSearchHistory(['Daft Punk', 'The Weeknd', 'Lofi Chill']);
-    return {
-      ...seed,
-      settings: DEFAULT_SETTINGS,
-      searchHistory: ['Daft Punk', 'The Weeknd', 'Lofi Chill'],
-      savedCollection: [],
-    };
-  }
-
-  const seed = createInitialSeedState();
+  const empty = {
+    history: [],
+    likedTracks: [],
+    playlists: [],
+    savedCollection: [],
+  };
+  if (typeof window === "undefined")
+    return { ...empty, settings: DEFAULT_SETTINGS, searchHistory: [] };
+  // Personal playlists/likes come only from Supabase. Legacy unscoped browser
+  // records are left untouched for manual recovery, never imported or seeded.
   return {
-    history: safeParse<PlayEvent[]>(
-      window.localStorage.getItem(KEYS.HISTORY),
-      seed.history
-    ),
-    likedTracks: safeParse<Track[]>(
-      window.localStorage.getItem(KEYS.LIKED),
-      seed.likedTracks
-    ),
-    playlists: safeParse<UserPlaylist[]>(
-      window.localStorage.getItem(KEYS.PLAYLISTS),
-      seed.playlists
-    ),
+    ...empty,
     settings: {
       ...DEFAULT_SETTINGS,
-      ...safeParse<Partial<PlayerSettings>>(
-        window.localStorage.getItem(KEYS.SETTINGS),
-        {}
-      ),
+      ...safeParse<Partial<PlayerSettings>>(safeGet(KEYS.SETTINGS), {}),
     },
-    searchHistory: safeParse<string[]>(
-      window.localStorage.getItem(KEYS.SEARCH_HISTORY),
-      ['Daft Punk', 'The Weeknd', 'Lofi Chill']
-    ),
-    savedCollection: safeParse<SavedCollectionItem[]>(
-      window.localStorage.getItem(KEYS.SAVED_COLLECTION),
-      []
-    ),
+    searchHistory: safeParse<string[]>(safeGet(KEYS.SEARCH_HISTORY), []),
   };
 }
 
-export function saveHistory(history: PlayEvent[]) {
-  if (typeof window === 'undefined') return;
+export function saveHistory(history: PlayEvent[], userId?: string | null) {
+  if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(KEYS.HISTORY, JSON.stringify(history.slice(0, 120)));
-  } catch {
-    // ignore quota errors
-  }
-}
-
-export function saveLikedTracks(tracks: Track[]) {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(KEYS.LIKED, JSON.stringify(tracks));
-  } catch {
-    // ignore quota errors
-  }
-}
-
-export function savePlaylists(playlists: UserPlaylist[]) {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(KEYS.PLAYLISTS, JSON.stringify(playlists));
+    window.localStorage.setItem(
+      `${KEYS.HISTORY}:${userId || "guest"}`,
+      JSON.stringify(
+        history
+          .filter((e) => userId || Date.now() - e.lastPlayedAt < 90 * 86400000)
+          .slice(0, 120)
+      )
+    );
   } catch {
     // ignore quota errors
   }
 }
 
 export function saveSettings(settings: PlayerSettings) {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(KEYS.SETTINGS, JSON.stringify(settings));
   } catch {
@@ -136,7 +92,7 @@ export function saveSettings(settings: PlayerSettings) {
 }
 
 export function saveSearchHistory(queries: string[]) {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(
       KEYS.SEARCH_HISTORY,
@@ -147,10 +103,16 @@ export function saveSearchHistory(queries: string[]) {
   }
 }
 
-export function saveCollection(items: SavedCollectionItem[]) {
-  if (typeof window === 'undefined') return;
+export function saveCollection(
+  items: SavedCollectionItem[],
+  userId?: string | null
+) {
+  if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(KEYS.SAVED_COLLECTION, JSON.stringify(items));
+    window.localStorage.setItem(
+      `${KEYS.SAVED_COLLECTION}:${userId || "guest"}`,
+      JSON.stringify(items)
+    );
   } catch {
     // ignore quota errors
   }
@@ -181,4 +143,26 @@ export function recordTrackPlay(
     },
     ...history,
   ];
+}
+
+/** Device-only history/editorial bookmarks are scoped per account. Legacy
+ * unscoped collections are intentionally not auto-imported into any account. */
+export function loadAccountDeviceState(userId: string | null): {
+  history: PlayEvent[];
+  savedCollection: SavedCollectionItem[];
+} {
+  if (typeof window === "undefined")
+    return { history: [], savedCollection: [] };
+  return {
+    history: safeParse<PlayEvent[]>(
+      safeGet(`${KEYS.HISTORY}:${userId || "guest"}`),
+      []
+    )
+      .filter((e) => userId || Date.now() - e.lastPlayedAt < 90 * 86400000)
+      .slice(0, 120),
+    savedCollection: safeParse(
+      safeGet(`${KEYS.SAVED_COLLECTION}:${userId || "guest"}`),
+      []
+    ),
+  };
 }

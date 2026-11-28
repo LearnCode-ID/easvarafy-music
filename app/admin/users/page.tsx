@@ -64,7 +64,7 @@ export default function AdminUsersPage() {
   }, [search, role, status, page]);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => { void load(); });
   }, [load]);
 
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));

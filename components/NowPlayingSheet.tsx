@@ -41,7 +41,7 @@ import { ArtworkImage } from './ArtworkImage';
 import { EqualizerSheet, SleepTimerSheet } from './AudioToolsModals';
 import { LyricsShareModal } from './LyricsShareModal';
 import { DownloadButton } from './DownloadButton';
-import { useMusic, type UpNextMode } from './MusicProvider';
+import { usePlaybackProgress, useMusic, type UpNextMode } from './MusicProvider';
 import { PlayerBackground } from './PlayerBackground';
 import { PlayerSlider } from './PlayerSlider';
 import { SyncedLyricsView } from './SyncedLyricsView';
@@ -60,7 +60,6 @@ export function NowPlayingSheet() {
     currentTrack,
     isPlaying,
     isBuffering,
-    currentTime,
     duration,
     volume,
     isMuted,
@@ -100,6 +99,7 @@ export function NowPlayingSheet() {
     toggleBackgroundPopup,
     playbackSource,
   } = useMusic();
+  const currentTime = usePlaybackProgress(isNowPlayingOpen);
 
   // Android back: lyrics/queue -> player view -> close the full player.
   useBackHandler(isNowPlayingOpen, () => {
@@ -150,11 +150,11 @@ export function NowPlayingSheet() {
           initial={{ y: '100%', opacity: 0.7 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: '100%', opacity: 0.7 }}
-          transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+          transition={{ type: 'spring', stiffness: 260, damping: 32, mass: 0.9 }}
           role="dialog"
           aria-modal="true"
           aria-label="Now Playing"
-          className="fixed inset-0 z-50 bg-[var(--m3-bg)] flex flex-col overflow-hidden"
+          className="glass-player fixed inset-0 z-50 bg-[var(--m3-bg)] flex flex-col overflow-hidden"
         >
           {/* Multi-Mode Player Background (Blurred Artwork, Solid, Gradient, Animated Gradient, Liquid) */}
           <PlayerBackground
@@ -308,7 +308,7 @@ export function NowPlayingSheet() {
           </div>
 
           {/* Main Sheet Content */}
-          <div className="relative z-10 flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-10 py-3 sm:py-4 flex flex-col items-center justify-center">
+          <div data-testid="now-playing-content" className="relative z-10 flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-10 py-3 sm:py-4 flex flex-col items-center">
             {nowPlayingTab === 'player' && (
               <div className="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-12 items-center my-auto min-w-0">
                 {/* Left Column: Tactile Artwork with Customizable Corner Radius & Swipe-to-Skip Gesture */}
@@ -331,7 +331,7 @@ export function NowPlayingSheet() {
                     data-testid="now-playing-artwork"
                     data-corner-radius={artRadiusPx}
                     className={cn(
-                      'w-full max-w-[264px] sm:max-w-[360px] aspect-square overflow-hidden shadow-2xl shadow-black/30 ring-1 ring-black/10 dark:ring-white/15',
+                      'glass-player-art w-full max-w-[264px] sm:max-w-[360px] aspect-square overflow-hidden shadow-2xl shadow-black/30 ring-1 ring-black/10 dark:ring-white/15',
                       settings.swipeToChangeTrack && 'cursor-grab active:cursor-grabbing touch-pan-y'
                     )}
                   >
@@ -405,7 +405,7 @@ export function NowPlayingSheet() {
                   </div>
 
                   {/* Multi-Style Interactive Scrub Bar (Squiggly, Wavy, Slim, Default) */}
-                  <div className="space-y-1">
+                  <div className="glass-progress space-y-1">
                     <PlayerSlider
                       style={settings.sliderStyle}
                       currentTime={currentTime}
@@ -445,7 +445,7 @@ export function NowPlayingSheet() {
                   {useExpressiveControls ? (
                     <div
                       data-testid="v9-expressive-controls"
-                      className="space-y-2.5"
+                      className="glass-player-controls space-y-2.5"
                     >
                       <div className="flex items-center gap-2 h-[64px]">
                         <motion.button
@@ -483,7 +483,7 @@ export function NowPlayingSheet() {
                                 : pressedControl
                                   ? 1.25
                                   : 1.5,
-                            borderRadius: isPlaying ? 999 : 22,
+                            borderRadius: isPlaying ? '32px' : '28px',
                           }}
                           transition={{ type: 'spring', stiffness: 380, damping: 26 }}
                           className="h-full basis-0 min-w-[96px] flex items-center justify-center bg-[var(--m3-primary)] text-[var(--m3-on-primary)] shadow-xl hover:brightness-110"
@@ -565,7 +565,7 @@ export function NowPlayingSheet() {
                   ) : (
                     <div
                       data-testid="classic-controls"
-                      className="flex items-center justify-between"
+                      className="glass-player-controls flex items-center justify-between"
                     >
                       <button
                         type="button"
@@ -636,7 +636,7 @@ export function NowPlayingSheet() {
                   )}
 
                   {/* Volume Control */}
-                  <div className="flex items-center gap-3">
+                  <div className="glass-volume flex items-center gap-3">
                     <button
                       type="button"
                       onClick={toggleMute}

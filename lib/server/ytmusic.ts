@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import YTMusic, {
   type AlbumDetailed,
   type ArtistDetailed,
@@ -7,7 +8,7 @@ import YTMusic, {
   type SongDetailed,
   type ThumbnailFull,
   type VideoDetailed,
-} from 'ytmusic-api';
+} from "ytmusic-api";
 import type {
   AlbumSummary,
   ArtistSummary,
@@ -15,7 +16,7 @@ import type {
   HomeShelfItem,
   PlaylistSummary,
   Track,
-} from '@/lib/metrolist/types';
+} from "@/lib/metrolist/types";
 
 const clientPool = new Map<string, Promise<YTMusic>>();
 
@@ -24,10 +25,12 @@ export async function getYTMusicClient(options?: {
   hl?: string;
   cookies?: string;
 }): Promise<YTMusic> {
-  const gl = (options?.gl || 'ID').toUpperCase();
-  const hl = options?.hl || 'en';
-  const cookies = options?.cookies?.trim() || '';
-  const key = `${gl}:${hl}:${cookies ? cookies.slice(0, 24) : 'anon'}`;
+  const gl = (options?.gl || "ID").toUpperCase();
+  const hl = options?.hl || "en";
+  const cookies = options?.cookies?.trim() || "";
+  const key = `${gl}:${hl}:${
+    cookies ? createHash("sha256").update(cookies).digest("hex") : "anon"
+  }`;
 
   let pending = clientPool.get(key);
   if (!pending) {
@@ -52,6 +55,8 @@ export async function getYTMusicClient(options?: {
         throw err;
       });
     clientPool.set(key, pending);
+    while (clientPool.size > 32)
+      clientPool.delete(clientPool.keys().next().value!);
   }
   return pending;
 }
@@ -63,15 +68,17 @@ export function pickBestThumbnail(
   if (!thumbnails || thumbnails.length === 0) {
     return fallbackVideoId
       ? `https://i.ytimg.com/vi/${fallbackVideoId}/hqdefault.jpg`
-      : '';
+      : "";
   }
 
-  const sorted = [...thumbnails].sort((a, b) => (b.width || 0) - (a.width || 0));
-  let url = sorted[0]?.url || '';
+  const sorted = [...thumbnails].sort(
+    (a, b) => (b.width || 0) - (a.width || 0)
+  );
+  let url = sorted[0]?.url || "";
 
   // Upgrade small lh3.googleusercontent.com / yt3.ggpht.com thumbnails to crisp 360px
-  if (url.includes('googleusercontent.com') || url.includes('ggpht.com')) {
-    url = url.replace(/=w\d+-h\d+[^&]*/, '=w360-h360-l90-rj');
+  if (url.includes("googleusercontent.com") || url.includes("ggpht.com")) {
+    url = url.replace(/=w\d+-h\d+[^&]*/, "=w360-h360-l90-rj");
   }
   return url;
 }
@@ -79,10 +86,11 @@ export function pickBestThumbnail(
 export function normalizeSong(item: SongDetailed): Track {
   const artistNames =
     item.artists && item.artists.length > 0
-      ? item.artists.map((a) => a.name).join(', ')
-      : item.artist?.name || 'Unknown Artist';
+      ? item.artists.map((a) => a.name).join(", ")
+      : item.artist?.name || "Unknown Artist";
 
   return {
+    provider: "youtube",
     videoId: item.videoId,
     title: item.name,
     artist: artistNames,
@@ -95,7 +103,7 @@ export function normalizeSong(item: SongDetailed): Track {
     album: item.album || null,
     duration: item.duration ?? null,
     thumbnail: pickBestThumbnail(item.thumbnails, item.videoId),
-    type: 'SONG',
+    type: "SONG",
     explicit: item.explicit,
   };
 }
@@ -103,10 +111,11 @@ export function normalizeSong(item: SongDetailed): Track {
 export function normalizeVideo(item: VideoDetailed): Track {
   const artistNames =
     item.artists && item.artists.length > 0
-      ? item.artists.map((a) => a.name).join(', ')
-      : item.artist?.name || 'Unknown Artist';
+      ? item.artists.map((a) => a.name).join(", ")
+      : item.artist?.name || "Unknown Artist";
 
   return {
+    provider: "youtube",
     videoId: item.videoId,
     title: item.name,
     artist: artistNames,
@@ -119,18 +128,18 @@ export function normalizeVideo(item: VideoDetailed): Track {
     album: null,
     duration: item.duration ?? null,
     thumbnail: pickBestThumbnail(item.thumbnails, item.videoId),
-    type: 'VIDEO',
+    type: "VIDEO",
   };
 }
 
 export function normalizeAlbum(item: AlbumDetailed): AlbumSummary {
   const artistNames =
     item.artists && item.artists.length > 0
-      ? item.artists.map((a) => a.name).join(', ')
-      : item.artist?.name || 'Various Artists';
+      ? item.artists.map((a) => a.name).join(", ")
+      : item.artist?.name || "Various Artists";
 
   return {
-    type: 'ALBUM',
+    type: "ALBUM",
     albumId: item.albumId,
     playlistId: item.playlistId,
     title: item.name,
@@ -148,17 +157,17 @@ export function normalizeAlbum(item: AlbumDetailed): AlbumSummary {
 
 export function normalizePlaylist(item: PlaylistDetailed): PlaylistSummary {
   return {
-    type: 'PLAYLIST',
+    type: "PLAYLIST",
     playlistId: item.playlistId,
     title: item.name,
-    artist: item.artist?.name || 'YouTube Music',
+    artist: item.artist?.name || "YouTube Music",
     thumbnail: pickBestThumbnail(item.thumbnails),
   };
 }
 
 export function normalizeArtist(item: ArtistDetailed): ArtistSummary {
   return {
-    type: 'ARTIST',
+    type: "ARTIST",
     artistId: item.artistId,
     name: item.name,
     thumbnail: pickBestThumbnail(item.thumbnails),
@@ -167,16 +176,16 @@ export function normalizeArtist(item: ArtistDetailed): ArtistSummary {
 
 export function normalizeSearchItem(item: SearchResult): HomeShelfItem | null {
   switch (item.type) {
-    case 'SONG':
-      return { ...normalizeSong(item), kind: 'TRACK' };
-    case 'VIDEO':
-      return { ...normalizeVideo(item), kind: 'TRACK' };
-    case 'ALBUM':
-      return { ...normalizeAlbum(item), kind: 'ALBUM' };
-    case 'PLAYLIST':
-      return { ...normalizePlaylist(item), kind: 'PLAYLIST' };
-    case 'ARTIST':
-      return { ...normalizeArtist(item), kind: 'ARTIST' };
+    case "SONG":
+      return { ...normalizeSong(item), kind: "TRACK" };
+    case "VIDEO":
+      return { ...normalizeVideo(item), kind: "TRACK" };
+    case "ALBUM":
+      return { ...normalizeAlbum(item), kind: "ALBUM" };
+    case "PLAYLIST":
+      return { ...normalizePlaylist(item), kind: "PLAYLIST" };
+    case "ARTIST":
+      return { ...normalizeArtist(item), kind: "ARTIST" };
     default:
       return null;
   }
@@ -191,7 +200,9 @@ export function normalizeHomeSections(sections: HomeSection[]): HomeShelf[] {
         if (normalized) items.push(normalized);
       }
       return {
-        id: `ytm-shelf-${idx}-${section.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+        id: `ytm-shelf-${idx}-${section.title
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")}`,
         title: section.title,
         items,
       };

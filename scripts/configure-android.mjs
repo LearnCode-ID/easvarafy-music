@@ -339,6 +339,15 @@ const copyTree = (src, dest) => {
 };
 copyTree(path.join(nativeAndroidDir, 'java'), path.join(root, 'android', 'app', 'src', 'main', 'java'));
 copyTree(path.join(nativeAndroidDir, 'res'), resDir);
+// Compile-time API allowlist for native transfers (no arbitrary URL bridge).
+const downloadBase = process.env.NEXT_PUBLIC_API_BASE ||
+  (/^https:\/\//.test(process.env.CAPACITOR_SERVER_URL || '') ? process.env.CAPACITOR_SERVER_URL : 'https://easvarafy-music.vercel.app');
+const downloadOrigin = new URL(downloadBase).origin;
+if (!downloadOrigin.startsWith('https://')) throw new Error('Native download API must use HTTPS');
+mkdirSync(valuesDir, { recursive: true });
+writeFileSync(path.join(valuesDir, 'easvarafy_download.xml'),
+  `<resources><string name="easvarafy_download_origin" translatable="false">${downloadOrigin}</string></resources>`);
+
 console.log('✓ Copied native/android (MediaPlaybackService, EasvarafyMediaPlugin, Dynamic Island, icons)');
 
 writeFileSync(
@@ -409,6 +418,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(EasvarafyMediaPlugin.class);
         // Local plugin: admin broadcast notifications (device id, poller, taps).
         registerPlugin(EasvarafyNotifyPlugin.class);
+        registerPlugin(EasvarafyDownloadPlugin.class);
         super.onCreate(savedInstanceState);
         requestNotificationPermissionIfNeeded();
         setupNotifications();

@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useDesktopLayout } from '@/lib/ui/useDesktopLayout';
 import {
   ChevronUp,
   Heart,
@@ -12,15 +13,15 @@ import {
 } from 'lucide-react';
 import { ArtworkImage } from './ArtworkImage';
 import { LiquidGlassBackdropLayer } from './LiquidGlassSurface';
-import { useMusic } from './MusicProvider';
+import { usePlaybackProgress, useMusic } from './MusicProvider';
 import { formatDuration } from '@/lib/metrolist/lyrics';
 
 export function MiniPlayer() {
   const {
     currentTrack,
+    isNowPlayingOpen,
     isPlaying,
     isBuffering,
-    currentTime,
     duration,
     togglePlayPause,
     nextTrack,
@@ -31,6 +32,8 @@ export function MiniPlayer() {
     toggleBackgroundPopup,
     settings,
   } = useMusic();
+  const desktop = useDesktopLayout();
+  const currentTime = usePlaybackProgress(desktop && !isNowPlayingOpen);
 
   if (!currentTrack) return null;
 
@@ -46,7 +49,7 @@ export function MiniPlayer() {
           className={`relative overflow-hidden px-3.5 py-2 flex items-center gap-3 ${
             isLiquidGlass
               ? 'rounded-full'
-              : 'rounded-[22px] metro-surface shadow-xl'
+              : 'glass-mini glass-surface'
           }`}
         >
           {isLiquidGlass && (

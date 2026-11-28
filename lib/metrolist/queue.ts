@@ -1,5 +1,6 @@
-import { filterTracksByPreferences } from './recommendations';
-import type { PlayerSettings, RepeatMode, Track } from './types';
+import { trackKey } from "@/lib/recommendation/engine";
+import { filterTracksByPreferences } from "./recommendations";
+import type { PlayerSettings, RepeatMode, Track } from "./types";
 
 export interface QueueState {
   queue: Track[];
@@ -7,6 +8,8 @@ export interface QueueState {
   currentIndex: number;
   shuffle: boolean;
   repeat: RepeatMode;
+  /** Only these entries may be replaced by recommendation refreshes. */
+  automaticIds?: string[];
 }
 
 export function createQueueState(): QueueState {
@@ -15,7 +18,7 @@ export function createQueueState(): QueueState {
     originalQueue: [],
     currentIndex: -1,
     shuffle: false,
-    repeat: 'off',
+    repeat: "off",
   };
 }
 
@@ -42,28 +45,31 @@ export function playTrackInQueue(
   rng: () => number = Math.random
 ): QueueState {
   const baseList =
-    contextTracks && contextTracks.length > 0
-      ? contextTracks
-      : [track];
+    contextTracks && contextTracks.length > 0 ? contextTracks : [track];
 
   // Ensure the selected track exists in baseList
   const existingIdx = baseList.findIndex((t) => t.videoId === track.videoId);
-  const normalizedList = existingIdx >= 0 ? [...baseList] : [track, ...baseList];
+  const normalizedList =
+    existingIdx >= 0 ? [...baseList] : [track, ...baseList];
 
   if (state.shuffle) {
     const others = normalizedList.filter((t) => t.videoId !== track.videoId);
     const shuffled = [track, ...fisherYatesShuffle(others, rng)];
     return {
       ...state,
+      automaticIds: [],
       originalQueue: normalizedList,
       queue: shuffled,
       currentIndex: 0,
     };
   }
 
-  const targetIndex = normalizedList.findIndex((t) => t.videoId === track.videoId);
+  const targetIndex = normalizedList.findIndex(
+    (t) => t.videoId === track.videoId
+  );
   return {
     ...state,
+    automaticIds: [],
     originalQueue: normalizedList,
     queue: normalizedList,
     currentIndex: Math.max(0, targetIndex),
@@ -97,11 +103,18 @@ export function insertPlayNext(state: QueueState, track: Track): QueueState {
   const insertAt = Math.min(filtered.length, newCurrentIndex + 1);
   filtered.splice(insertAt, 0, track);
 
-  const originalExists = state.originalQueue.some((t) => t.videoId === track.videoId);
-  const nextOriginal = originalExists ? state.originalQueue : [...state.originalQueue, track];
+  const originalExists = state.originalQueue.some(
+    (t) => t.videoId === track.videoId
+  );
+  const nextOriginal = originalExists
+    ? state.originalQueue
+    : [...state.originalQueue, track];
 
   return {
     ...state,
+    automaticIds: (state.automaticIds || []).filter(
+      (id) => id !== trackKey(track)
+    ),
     queue: filtered,
     originalQueue: nextOriginal,
     currentIndex: newCurrentIndex,
@@ -113,14 +126,25 @@ export function appendToQueue(state: QueueState, track: Track): QueueState {
     return playTrackInQueue(state, track, [track]);
   }
 
-  if (state.queue.some((t) => t.videoId === track.videoId)) {
+  const automaticIds = (state.automaticIds || []).filter(
+    (id) => id !== trackKey(track)
+  );
+  const existing = state.queue.findIndex(
+    (t) => trackKey(t) === trackKey(track)
+  );
+  if (existing >= 0 && !(state.automaticIds || []).includes(trackKey(track)))
     return state;
-  }
-
+  const queue = state.queue.filter((_, i) => i !== existing);
+  const firstAuto = queue.findIndex(
+    (t, i) => i > state.currentIndex && automaticIds.includes(trackKey(t))
+  );
+  queue.splice(firstAuto < 0 ? queue.length : firstAuto, 0, track);
   return {
     ...state,
-    queue: [...state.queue, track],
-    originalQueue: [...state.originalQueue, track],
+    queue,
+    automaticIds,
+    originalQueue:
+      existing >= 0 ? state.originalQueue : [...state.originalQueue, track],
   };
 }
 
@@ -129,7 +153,9 @@ export function removeFromQueue(state: QueueState, index: number): QueueState {
 
   const removed = state.queue[index];
   const nextQueue = state.queue.filter((_, idx) => idx !== index);
-  const nextOriginal = state.originalQueue.filter((t) => t.videoId !== removed.videoId);
+  const nextOriginal = state.originalQueue.filter(
+    (t) => t.videoId !== removed.videoId
+  );
 
   if (nextQueue.length === 0) {
     return {
@@ -182,6 +208,9 @@ export function reorderQueue(
   return {
     ...state,
     queue: nextQueue,
+    automaticIds: (state.automaticIds || []).filter(
+      (id) => id !== trackKey(moved)
+    ),
     currentIndex: nextIndex,
   };
 }
@@ -239,22 +268,22 @@ export function toggleShuffleQueue(
 }
 
 export function cycleRepeatMode(mode: RepeatMode): RepeatMode {
-  if (mode === 'off') return 'all';
-  if (mode === 'all') return 'one';
-  return 'off';
+  if (mode === "off") return "all";
+  if (mode === "all") return "one";
+  return "off";
 }
 
 export function advanceQueue(
   state: QueueState,
-  direction: 'next' | 'prev',
+  direction: "next" | "prev",
   options?: { manual?: boolean }
 ): { state: QueueState; track: Track | null; ended: boolean } {
   if (state.queue.length === 0 || state.currentIndex < 0) {
     return { state, track: null, ended: true };
   }
 
-  if (direction === 'next') {
-    if (state.repeat === 'one' && !options?.manual) {
+  if (direction === "next") {
+    if (state.repeat === "one" && !options?.manual) {
       return {
         state,
         track: state.queue[state.currentIndex],
@@ -271,7 +300,7 @@ export function advanceQueue(
       };
     }
 
-    if (state.repeat === 'all') {
+    if (state.repeat === "all") {
       return {
         state: { ...state, currentIndex: 0 },
         track: state.queue[0],
@@ -292,7 +321,7 @@ export function advanceQueue(
     };
   }
 
-  if (state.repeat === 'all') {
+  if (state.repeat === "all") {
     const lastIndex = state.queue.length - 1;
     return {
       state: { ...state, currentIndex: lastIndex },
@@ -315,7 +344,7 @@ export function advanceQueue(
 export function appendRadioContinuation(
   state: QueueState,
   candidates: Track[],
-  settings: Pick<PlayerSettings, 'hideVideoSongs'>,
+  settings: Pick<PlayerSettings, "hideVideoSongs">,
   limit = 15
 ): QueueState {
   const existingIds = new Set(state.queue.map((t) => t.videoId));
@@ -327,6 +356,7 @@ export function appendRadioContinuation(
 
   return {
     ...state,
+    automaticIds: [...(state.automaticIds || []), ...filtered.map(trackKey)],
     queue: [...state.queue, ...filtered],
     originalQueue: [...state.originalQueue, ...filtered],
   };
@@ -339,27 +369,84 @@ export function appendRadioContinuation(
 export function replaceUpcomingQueue(
   state: QueueState,
   candidates: Track[],
-  settings: Pick<PlayerSettings, 'hideVideoSongs'>,
+  settings: Pick<PlayerSettings, "hideVideoSongs">,
   limit = 20
 ): QueueState {
   if (state.queue.length === 0 || state.currentIndex < 0) {
     return appendRadioContinuation(state, candidates, settings, limit);
   }
 
-  const kept = state.queue.slice(0, state.currentIndex + 1);
+  // Pin the immediate next entry and every explicit/context entry. Legacy
+  // persisted queues have no automaticIds and are therefore protected.
+  const auto = new Set(state.automaticIds || []);
+  const kept = state.queue.filter(
+    (t, i) => i <= state.currentIndex + 1 || !auto.has(trackKey(t))
+  );
   const keptIds = new Set(kept.map((t) => t.videoId));
   const upcoming = filterTracksByPreferences(candidates, settings)
     .filter((t) => !keptIds.has(t.videoId))
     .slice(0, limit);
 
   const nextQueue = [...kept, ...upcoming];
-  const keptOriginal = state.originalQueue.filter((t) => keptIds.has(t.videoId));
+  const keptOriginal = state.originalQueue.filter((t) =>
+    keptIds.has(t.videoId)
+  );
   const originalIds = new Set(keptOriginal.map((t) => t.videoId));
   const extraOriginal = upcoming.filter((t) => !originalIds.has(t.videoId));
 
   return {
     ...state,
     queue: nextQueue,
+    automaticIds: [
+      ...kept.filter((t) => auto.has(trackKey(t))).map(trackKey),
+      ...upcoming.map(trackKey),
+    ],
     originalQueue: [...keptOriginal, ...extraOriginal],
   };
+}
+
+/** Turning autoplay off removes only future generated entries. */
+export function removeAutomaticUpcoming(state: QueueState): QueueState {
+  const automatic = new Set(state.automaticIds || []);
+  const queue = state.queue.filter(
+    (t, i) => i <= state.currentIndex || !automatic.has(trackKey(t))
+  );
+  const kept = new Set(queue.map(trackKey));
+  return {
+    ...state,
+    queue,
+    originalQueue: state.originalQueue.filter((t) => kept.has(trackKey(t))),
+    automaticIds: (state.automaticIds || []).filter((id) => kept.has(id)),
+  };
+}
+
+/** Passive taste updates rotate at most four distant automatic entries.
+ * Manual refresh can still explicitly replace the automatic tail. */
+export function graduallyRefreshAutomaticQueue(
+  state: QueueState,
+  candidates: Track[],
+  settings: Pick<PlayerSettings, "hideVideoSongs">,
+  changes = 4
+): QueueState {
+  const automatic = new Set(state.automaticIds || []);
+  const existing = new Set(state.queue.map(trackKey));
+  const fresh = filterTracksByPreferences(candidates, settings).filter(
+    (t) => !existing.has(trackKey(t))
+  );
+  if (!fresh.length) return state;
+  const distant = state.queue.filter(
+    (t, i) => i > state.currentIndex + 1 && automatic.has(trackKey(t))
+  );
+  if (!distant.length)
+    return appendRadioContinuation(state, fresh, settings, changes);
+  const removed = new Set(
+    distant.slice(-Math.min(changes, fresh.length)).map(trackKey)
+  );
+  const kept = {
+    ...state,
+    queue: state.queue.filter((t) => !removed.has(trackKey(t))),
+    originalQueue: state.originalQueue.filter((t) => !removed.has(trackKey(t))),
+    automaticIds: (state.automaticIds || []).filter((id) => !removed.has(id)),
+  };
+  return appendRadioContinuation(kept, fresh, settings, changes);
 }

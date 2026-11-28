@@ -1,0 +1,206 @@
+/* Shared optical material. Accent tokens remain owned by the user's theme. */
+:root {
+  --glass-tint: rgb(255 255 255 / .76);
+  --glass-card: rgb(255 255 255 / .56);
+  --glass-control: rgb(255 255 255 / .62);
+  --glass-edge: rgb(255 255 255 / .84);
+  --glass-hairline: rgb(34 46 69 / .12);
+  --glass-ink: #182131;
+  --glass-muted: #3e4a5c;
+  --glass-blur: 20px;
+  --glass-saturation: 180%;
+  --glass-radius: 28px;
+  --glass-radius-inner: 20px;
+  --glass-pill: 999px;
+  --glass-shadow: 0 16px 48px -20px rgb(28 39 68 / .3), 0 3px 12px rgb(28 39 68 / .06);
+  --glass-specular: inset 0 1px 0 var(--glass-edge), inset 1px 0 0 var(--glass-edge);
+  --glass-spring: linear(0, .24 9%, .69 22%, .95 37%, 1.025 53%, 1.01 74%, 1);
+  --ambient-a: #8a96d5;
+  --ambient-b: #70b8b5;
+  --ambient-c: #d6a6bd;
+  --ambient-opacity: .24;
+}
+.dark {
+  --glass-tint: rgb(23 28 39 / .84);
+  --glass-card: rgb(29 35 48 / .64);
+  --glass-control: rgb(255 255 255 / .09);
+  --glass-edge: rgb(255 255 255 / .22);
+  --glass-hairline: rgb(255 255 255 / .12);
+  --glass-ink: #f2f4fa;
+  --glass-muted: #bcc5d5;
+  --glass-shadow: 0 18px 52px -18px rgb(0 0 0 / .6), 0 4px 16px rgb(0 0 0 / .16);
+  --ambient-opacity: .18;
+}
+.glass-app {
+  isolation: isolate;
+  color: var(--glass-ink);
+  font-family: -apple-system, BlinkMacSystemFont, var(--font-dm-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.glass-app h1, .glass-app h2, .glass-app h3 { letter-spacing: -.035em; }
+.glass-ambient { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.glass-ambient-mesh {
+  position: absolute; inset: -12%; opacity: var(--ambient-opacity);
+  background: radial-gradient(ellipse at 12% 15%, var(--ambient-a), transparent 58%), radial-gradient(ellipse at 85% 46%, var(--ambient-b), transparent 55%), radial-gradient(ellipse at 38% 95%, var(--ambient-c), transparent 58%);
+  transition: background 1.8s ease, opacity 1s ease;
+  animation: glass-drift 28s ease-in-out infinite alternate;
+}
+@keyframes glass-drift { to { transform: translate3d(3%, -3%, 0) scale(1.05); } }
+/* Only floating chrome uses backdrop blur. Scrolling cards use a cheap tint. */
+.glass-surface, .glass-app .glass-surface, .glass-app .liquid-glass, .glass-app .liquid-glass-elevated {
+  background: var(--glass-tint);
+  border: 1px solid var(--glass-hairline);
+  border-top-color: var(--glass-edge); border-left-color: var(--glass-edge);
+  box-shadow: var(--glass-specular), var(--glass-shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+}
+.glass-app :is(.metro-surface, .metro-surface-high, .m3-card) {
+  background: var(--glass-card);
+  border: 1px solid var(--glass-hairline);
+  border-top-color: var(--glass-edge);
+  box-shadow: var(--glass-specular), 0 6px 24px -18px rgb(0 0 0 / .2);
+  backdrop-filter: none;
+}
+.glass-app .m3-card { border-radius: var(--glass-radius); }
+.glass-app :is(.profile-button, .profile-input) { background: var(--glass-control); border-color: var(--glass-hairline); }
+.glass-app :is(button, a, input):focus-visible, .glass-player :is(button, input):focus-visible {
+  outline: 2px solid var(--m3-primary); outline-offset: 4px;
+}
+.glass-app button { transition-timing-function: var(--glass-spring); }
+.glass-app button:active:not(:disabled) { scale: .96; }
+.glass-app :is(.text-slate-400, .text-slate-500, .text-slate-600) { color: var(--glass-muted); }
+.glass-topbar { background: var(--glass-tint) !important; border-bottom: 1px solid var(--glass-hairline); backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)); }
+.glass-nav { border-radius: var(--glass-pill); overflow: hidden; }
+.glass-nav [aria-current="page"], .glass-sidebar [aria-current="page"] {
+  background: var(--m3-primary-container); color: var(--m3-on-primary-container);
+  border-radius: var(--glass-pill); box-shadow: var(--glass-specular), 0 2px 8px rgb(0 0 0 / .06);
+}
+.glass-sidebar { border-radius: var(--glass-radius); }
+.glass-content { animation: glass-enter .38s var(--glass-spring) both; }
+@keyframes glass-enter { from { opacity: .5; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+.glass-mini { border-radius: var(--glass-pill); }
+.glass-player { color: var(--glass-ink); }
+.glass-player-art { box-shadow: 0 28px 60px -20px color-mix(in srgb, var(--ambient-a) 50%, transparent), 0 12px 32px rgb(0 0 0 / .22); }
+.glass-player-controls, .glass-volume, .glass-progress {
+  padding: 10px; border-radius: var(--glass-radius); background: var(--glass-card);
+  border: 1px solid var(--glass-hairline); box-shadow: var(--glass-specular);
+}
+.glass-player-controls button { border-radius: var(--glass-pill); }
+/* Glass is the surrounding material, not a replacement for action colors. */
+.glass-player-controls button[aria-label="Play"], .glass-player-controls button[aria-label="Pause"] {
+  background: var(--m3-primary); color: var(--m3-on-primary);
+  border: 1px solid var(--glass-edge); box-shadow: var(--glass-specular), var(--glass-shadow);
+}
+.glass-app [data-testid="detail-view"] > section { border-radius: 32px; }
+.glass-app [data-testid="detail-view"] :is(tr, [role="row"]) { border-bottom: 1px solid var(--glass-hairline); }
+@media (hover: hover) {
+  .glass-app :is(.profile-button, .glass-player-controls button):hover { filter: brightness(1.06); box-shadow: var(--glass-specular), 0 0 18px color-mix(in srgb, var(--ambient-a) 18%, transparent); }
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-surface, .glass-app .liquid-glass, .glass-topbar { background: var(--m3-surface) !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass-app { --glass-tint: var(--m3-surface); --glass-card: var(--m3-surface); --glass-control: var(--m3-surface-high); }
+  .glass-surface, .glass-app .glass-surface, .glass-app .liquid-glass, .glass-app .liquid-glass-elevated, .glass-topbar { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .glass-ambient { display: none; }
+}
+@media (prefers-contrast: more) {
+  .glass-app { --glass-tint: var(--m3-surface); --glass-card: var(--m3-surface); --glass-hairline: currentColor; }
+  .glass-ambient { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .glass-ambient-mesh, .glass-content { animation: none; }
+  .glass-app button:active:not(:disabled) { scale: 1; }
+}
+@media (forced-colors: active) {
+  .glass-ambient { display: none; }
+  .glass-surface, .glass-player-controls { border: 1px solid CanvasText; box-shadow: none; }
+}
+.glass-song-list { padding: 5px; border-radius: var(--glass-radius); overflow: hidden; }
+.glass-song-list > div { border-color: var(--glass-hairline); border-radius: var(--glass-radius-inner); }
+.glass-song-list > div + div { border-top-width: 1px; }
+.glass-playlist-hero { box-shadow: var(--glass-specular), var(--glass-shadow) !important; }
+.glass-auth { background-image: radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--ambient-a) 16%, transparent), transparent 60%), radial-gradient(ellipse at 100% 90%, color-mix(in srgb, var(--ambient-b) 14%, transparent), transparent 55%); }
+
+.glass-app p.opacity-60 { opacity: 1; color: var(--glass-muted); }
+
+/* Mobile/low-memory GPU budget: preserve tint, color, shape and artwork, not
+   repeated full-screen blur, moving backdrops or optical displacement. */
+.glass-app[data-effects="lite"] :is(.glass-surface, .liquid-glass, .liquid-glass-elevated, .glass-topbar),
+.glass-app[data-effects="lite"] [data-liquid-glass-engine] {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: var(--glass-tint);
+}
+.glass-app[data-effects="lite"] :is(.glass-ambient-mesh, .glass-content, .player-animated-gradient, .player-liquid-orb-a, .player-liquid-orb-b) { animation: none; }
+.glass-app[data-effects="lite"] .glass-player-art { box-shadow: 0 10px 28px rgb(0 0 0 / .2); }
+.glass-app[data-effects="lite"] .glass-player button { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.glass-app[data-player-open="true"] .glass-ambient { visibility: hidden; }
+.glass-app[data-page-visible="false"] * { animation-play-state: paused !important; }
+
+/* Owned playlists: clean album-first layout, using the user's accent rather
+   than hard-coded Spotify green. No extra blur/canvas on scrolling rows. */
+.user-playlist { max-width: 850px; margin-inline: auto; }
+.user-playlist-hero { position: relative; padding: 0 0 4px; }
+.user-playlist-toolbar { position: absolute; inset: 0 0 auto; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.user-playlist-cover { width: min(52vw, 260px); aspect-ratio: 1; margin-inline: auto; box-shadow: 0 12px 32px rgb(0 0 0 / .18); }
+.playlist-icon { display: inline-flex; align-items: center; justify-content: center; width: 44px; min-width: 44px; height: 44px; border-radius: 999px; color: inherit; }
+.playlist-icon svg { width: 23px; height: 23px; stroke-width: 1.7; }
+.playlist-icon-scrim { background: var(--glass-control); }
+.playlist-icon:disabled, .playlist-play:disabled { opacity: .4; }
+.playlist-mini-cover { width: 36px; height: 46px; border: 1px solid var(--glass-hairline); border-radius: 5px; display: grid; place-items: center; margin-right: 6px; background: var(--glass-card); color: var(--glass-muted); }
+.playlist-play { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 50%; background: var(--m3-primary); color: var(--m3-on-primary); }
+.playlist-play svg { width: 26px; height: 26px; }
+.playlist-icon[aria-pressed="true"] { color: var(--m3-primary); }
+.playlist-chip-row { display: flex; gap: 8px; overflow-x: auto; padding: 12px 2px; scrollbar-width: thin; }
+.playlist-chip { flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; min-height: 38px; border: 1px solid var(--glass-hairline); border-radius: 999px; padding: 7px 13px; font-size: 12px; font-weight: 600; background: var(--glass-control); }
+.playlist-chip svg { width: 16px; height: 16px; stroke-width: 1.7; }
+.playlist-chip[aria-pressed="true"] { color: var(--m3-on-primary-container); background: var(--m3-primary-container); }
+.playlist-chip select option { color: var(--glass-ink); background: var(--m3-surface); }
+.playlist-track-row { display: flex; align-items: center; gap: 6px; min-height: 72px; padding-block: 8px; }
+.playlist-track-list { padding-bottom: 12px; }
+@media (hover: hover) { .playlist-icon:hover, .playlist-track-row:hover { background: var(--glass-control); } }
+@media (min-width: 768px) {
+  .user-playlist-hero { padding-top: 4px; }
+  .user-playlist-cover { width: 300px; }
+  .playlist-track-row { padding-inline: 8px; border-radius: 12px; }
+}
+
+/* Portaled overlays escape card overflow/stacking contexts. Opaque surfaces
+   keep text readable over album art even with reduced transparency/lite mode. */
+.track-context-menu, .profile-editor-overlay {
+  color: var(--glass-ink);
+  font-family: -apple-system, BlinkMacSystemFont, var(--font-dm-sans), system-ui, sans-serif;
+}
+.track-context-menu {
+  background: var(--m3-surface);
+  border: 1px solid var(--glass-hairline);
+  box-shadow: 0 12px 40px rgb(0 0 0 / .28);
+}
+.track-context-menu button { min-height: 44px; white-space: normal; }
+.track-context-menu :is(button, a):focus-visible { outline: 2px solid var(--m3-primary); outline-offset: -2px; }
+.profile-editor-overlay { background: rgb(0 0 0 / .68); padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+.profile-editor-overlay .profile-editor {
+  background: var(--m3-surface);
+  color: var(--glass-ink);
+  border: 1px solid var(--glass-hairline);
+  border-radius: var(--glass-radius);
+  box-shadow: 0 24px 80px rgb(0 0 0 / .4);
+  overscroll-behavior: contain;
+}
+.profile-editor-overlay .profile-input { background: var(--m3-surface-high); color: var(--glass-ink); border-color: var(--glass-hairline); }
+.profile-editor-overlay .text-\[var\(--m3-on-surface-variant\)\] { color: var(--glass-muted); }
+.profile-editor-overlay button[aria-label="Tutup"] { min-width: 44px; min-height: 44px; display: grid; place-items: center; border-radius: 999px; }
+
+.profile-editor-heading { position: sticky; top: -1.25rem; z-index: 1; margin: -1.25rem -1.25rem 0; padding: 1rem 1.25rem; background: var(--m3-surface); border-bottom: 1px solid var(--glass-hairline); }
+
+/* Playlist management is modal, never an expanding block below the toolbar. */
+.playlist-dialog-backdrop { position: fixed; inset: 0; z-index: 110; display: flex; align-items: center; justify-content: center; padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); background: rgb(0 0 0 / .68); font-family: -apple-system, BlinkMacSystemFont, var(--font-dm-sans), system-ui, sans-serif; color: var(--glass-ink); }
+.playlist-action-dialog { width: 100%; max-width: 520px; max-height: min(85dvh, 760px); display: flex; flex-direction: column; min-height: 0; background: var(--m3-surface); border: 1px solid var(--glass-hairline); border-radius: var(--glass-radius); box-shadow: 0 24px 80px rgb(0 0 0 / .4); overflow: hidden; }
+.playlist-dialog-heading { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--glass-hairline); }
+.playlist-dialog-content { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px; }
+.playlist-dialog-content .m3-card { background: transparent; padding: 0; border: 0; box-shadow: none; }
+.playlist-dialog-content .profile-input { background: var(--m3-surface-high); color: var(--glass-ink); }
+.playlist-dialog-content :is(button, input, textarea, select):focus-visible { outline: 2px solid var(--m3-primary); outline-offset: -2px; }
+.playlist-track-actions button { min-height: 44px; white-space: normal; }
