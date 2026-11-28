@@ -18,7 +18,7 @@ import { ArtworkImage } from './ArtworkImage';
 import { useMusic } from './MusicProvider';
 import { DetailViewSkeleton } from './Skeletons';
 import { TrackContextMenu } from './TrackContextMenu';
-import { DownloadButton } from './DownloadButton';
+import { DownloadButton, OfflineAvailability } from './DownloadButton';
 import { BlendDetailView } from './BlendDetailView';
 import { PlaylistEditor } from './PlaylistEditor';
 import { UserProfileDetail } from './UserProfileDetail';
@@ -450,6 +450,7 @@ export function DetailView() {
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
+                  <OfflineAvailability track={track} />
                   <DownloadButton track={track} />
                   <TrackContextMenu track={track} />
                 </div>
@@ -688,7 +689,8 @@ export function DetailView() {
                         </p>
                       </div>
                     </button>
-                    <DownloadButton track={track} />
+                    <OfflineAvailability track={track} />
+                  <DownloadButton track={track} />
                     <TrackContextMenu track={track} />
                   </div>
                 );

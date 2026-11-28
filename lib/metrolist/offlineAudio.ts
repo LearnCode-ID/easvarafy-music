@@ -1,28 +1,16 @@
 'use client';
 
-/**
- * Offline song storage (download + play without internet).
- *
- *  - Android APK (Capacitor): audio, cover art and the index live in the app's
- *    private storage (`Directory.Data/offline/...`) through @capacitor/filesystem.
- *    Playback uses `Capacitor.convertFileSrc(fileUri)`.
- *  - Web browser: audio + cover blobs and metadata live in IndexedDB; playback
- *    uses `URL.createObjectURL(blob)`.
- *
- * Downloads go through a small queue (max 2 at a time) with live progress
- * (0–100 %) read from the fetch ReadableStream. State is exposed as an external
- * store so React components can subscribe (see useOfflineLibrary.ts).
- *
- * Pure logic (queue, progress, index parsing) lives in offlineQueue.ts.
+/** Device-local audio library. Android uses the foreground-only native direct-to-file
+ * plugin; web stores validated blobs in IndexedDB. Metadata never leaves this device.
+ * Completion follows content validation + file verification + durable index write.
  */
+import { NativeDownload, hasNativeDownloads, getWifiOnly, transferError } from '@/lib/native/downloads';
+import { validateAudioTransfer, MAX_AUDIO_BYTES } from './audioValidation';
 import { Capacitor } from '@capacitor/core';
 import { apiUrl } from '@/lib/api/base';
-import { upgradeArtworkUrl } from '@/lib/native/mediaControls';
 import type { LyricsPayload, Track } from './types';
 import {
-  audioFileName,
-  bytesToBase64,
-  concatChunks,
+  downloadKey,
   createDownloadQueue,
   describeDownloadError,
   markDownloadFailed,
@@ -51,17 +39,21 @@ export { formatBytes } from './offlineQueue';
 
 export interface OfflineSnapshot {
   ready: boolean;
+  error: string | null;
   records: DownloadedTrack[];
   byId: ReadonlyMap<string, DownloadedTrack>;
   queue: DownloadQueueState;
   totalBytes: number;
 }
 
+let loadError: string | null = null;
+
 function buildSnapshot(ready: boolean, records: DownloadedTrack[], queue: DownloadQueueState): OfflineSnapshot {
   return {
     ready,
+    error: loadError,
     records,
-    byId: new Map(records.map((r) => [r.videoId, r])),
+    byId: new Map(records.map((r) => [downloadKey(r), r])),
     queue,
     totalBytes: totalDownloadedBytes(records),
   };
@@ -111,7 +103,6 @@ interface OfflineBackend {
   loadIndex(): Promise<DownloadedTrack[]>;
   saveIndex(records: DownloadedTrack[]): Promise<void>;
   createWriter(videoId: string, mimeType: string): Promise<AudioWriter>;
-  saveThumb(videoId: string, blob: Blob): Promise<string | null>;
   removeFiles(record: DownloadedTrack): Promise<void>;
   clearAll(): Promise<void>;
   resolveUrl(localUri: string): Promise<string | null>;
@@ -129,13 +120,11 @@ export function isNativeOfflineStorage(): boolean {
 
 const OFFLINE_DIR = 'offline';
 const INDEX_PATH = `${OFFLINE_DIR}/index.json`;
-/** Flush to disk every ~512 KB (base64 over the bridge). */
-const NATIVE_FLUSH_BYTES = 512 * 1024;
-
 function relativeOfflinePath(uri: string): string | null {
   const idx = uri.indexOf(`/${OFFLINE_DIR}/`);
   if (idx < 0) return null;
-  return decodeURIComponent(uri.slice(idx + 1));
+  const path = decodeURIComponent(uri.slice(idx + 1));
+  return /^offline\/(audio|art)\/[A-Za-z0-9_:.-]+$/.test(path) && !path.includes('..') ? path : null;
 }
 
 async function fs() {
@@ -144,6 +133,12 @@ async function fs() {
 
 const nativeBackend: OfflineBackend = {
   async loadIndex() {
+    if (hasNativeDownloads()) {
+      const { json } = await NativeDownload.readIndex();
+      const raw = JSON.parse(json);
+      if (!Array.isArray(raw) && !(raw && Array.isArray(raw.tracks))) throw new Error('Format indeks unduhan rusak. Pulihkan data sebelum melanjutkan.');
+      return parseOfflineIndex(raw);
+    }
     const { Filesystem, Directory, Encoding } = await fs();
     try {
       const res = await Filesystem.readFile({
@@ -153,92 +148,30 @@ const nativeBackend: OfflineBackend = {
       });
       const text = typeof res.data === 'string' ? res.data : await res.data.text();
       return parseOfflineIndex(JSON.parse(text));
-    } catch {
-      return [];
+    } catch (err) {
+      if ((err as { code?: string })?.code === 'OS-PLUG-FILE-0008') return [];
+      throw new Error('Daftar unduhan lokal tidak dapat dibaca. Jangan hapus data aplikasi; coba buka ulang.');
     }
   },
 
   async saveIndex(records) {
+    if (hasNativeDownloads()) {
+      await NativeDownload.writeIndex({ json: serializeOfflineIndex(records) });
+      return;
+    }
     const { Filesystem, Directory, Encoding } = await fs();
     await Filesystem.writeFile({
-      path: INDEX_PATH,
+      path: `${INDEX_PATH}.tmp`,
       directory: Directory.Data,
       encoding: Encoding.UTF8,
       data: serializeOfflineIndex(records),
       recursive: true,
     });
+    await Filesystem.rename({ from: `${INDEX_PATH}.tmp`, to: INDEX_PATH, directory: Directory.Data, toDirectory: Directory.Data });
   },
 
-  async createWriter(videoId, mimeType) {
-    const { Filesystem, Directory } = await fs();
-    const finalPath = `${OFFLINE_DIR}/audio/${audioFileName(videoId, mimeType)}`;
-    const partPath = `${finalPath}.part`;
-    let pending: Uint8Array[] = [];
-    let pendingBytes = 0;
-    let written = 0;
-    let started = false;
-
-    const flush = async () => {
-      if (pendingBytes === 0 && started) return;
-      const data = bytesToBase64(concatChunks(pending));
-      pending = [];
-      written += pendingBytes;
-      pendingBytes = 0;
-      if (!started) {
-        await Filesystem.writeFile({ path: partPath, directory: Directory.Data, data, recursive: true });
-        started = true;
-      } else {
-        await Filesystem.appendFile({ path: partPath, directory: Directory.Data, data });
-      }
-    };
-
-    return {
-      async write(chunk) {
-        pending.push(chunk);
-        pendingBytes += chunk.byteLength;
-        if (pendingBytes >= NATIVE_FLUSH_BYTES) await flush();
-      },
-      async finish() {
-        await flush();
-        try {
-          await Filesystem.deleteFile({ path: finalPath, directory: Directory.Data });
-        } catch {
-          // no previous copy
-        }
-        await Filesystem.rename({
-          from: partPath,
-          to: finalPath,
-          directory: Directory.Data,
-          toDirectory: Directory.Data,
-        });
-        const { uri } = await Filesystem.getUri({ path: finalPath, directory: Directory.Data });
-        let size = written;
-        try {
-          const st = await Filesystem.stat({ path: finalPath, directory: Directory.Data });
-          if (st.size > 0) size = st.size;
-        } catch {
-          // keep counted size
-        }
-        return { localUri: uri, size };
-      },
-      async abort() {
-        pending = [];
-        try {
-          await Filesystem.deleteFile({ path: partPath, directory: Directory.Data });
-        } catch {
-          // nothing written yet
-        }
-      },
-    };
-  },
-
-  async saveThumb(videoId, blob) {
-    const { Filesystem, Directory } = await fs();
-    const path = `${OFFLINE_DIR}/art/${videoId}.jpg`;
-    const data = bytesToBase64(new Uint8Array(await blob.arrayBuffer()));
-    await Filesystem.writeFile({ path, directory: Directory.Data, data, recursive: true });
-    const { uri } = await Filesystem.getUri({ path, directory: Directory.Data });
-    return uri;
+  async createWriter() {
+    throw new Error('Transfer audio native harus memakai EasvarafyDownload, bukan base64.');
   },
 
   async removeFiles(record) {
@@ -249,8 +182,8 @@ const nativeBackend: OfflineBackend = {
       if (!path) continue;
       try {
         await Filesystem.deleteFile({ path, directory: Directory.Data });
-      } catch {
-        // already gone
+      } catch (err) {
+        if ((err as {code?: string})?.code !== 'OS-PLUG-FILE-0008') throw new Error('File tidak dapat dihapus. Periksa akses penyimpanan aplikasi.');
       }
     }
   },
@@ -259,21 +192,25 @@ const nativeBackend: OfflineBackend = {
     const { Filesystem, Directory } = await fs();
     try {
       await Filesystem.rmdir({ path: OFFLINE_DIR, directory: Directory.Data, recursive: true });
-    } catch {
-      // nothing stored
+    } catch (err) {
+      if ((err as {code?: string})?.code !== 'OS-PLUG-FILE-0008') throw new Error('Folder unduhan tidak dapat dihapus. Coba lagi.');
     }
   },
 
   async resolveUrl(localUri) {
     if (!localUri) return null;
-    return Capacitor.convertFileSrc(localUri);
+    const { Filesystem, Directory } = await fs();
+    const path = relativeOfflinePath(localUri);
+    if (!path) return null;
+    const st = await Filesystem.stat({ path, directory: Directory.Data });
+    return st.size > 0 ? Capacitor.convertFileSrc(localUri) : null;
   },
 };
 
 // ---- Web: IndexedDB --------------------------------------------------------
 
 const IDB_NAME = 'easvarafy-offline';
-const IDB_VERSION = 1;
+const IDB_VERSION = 2;
 const STORE_TRACKS = 'tracks';
 const STORE_BLOBS = 'blobs';
 
@@ -324,9 +261,15 @@ async function idbTx<T>(
     tx.onabort = () => reject(tx.error ?? new Error('Transaksi IndexedDB dibatalkan.'));
     tx.onerror = () => reject(tx.error);
   });
-  const result = await run(tx);
-  await done;
-  return result;
+  try {
+    const result = await run(tx);
+    await done;
+    return result;
+  } catch (err) {
+    try { tx.abort(); } catch { /* already complete/aborted */ }
+    await done.catch(() => {});
+    throw err;
+  }
 }
 
 const objectUrls = new Map<string, string>();
@@ -351,9 +294,9 @@ const webBackend: OfflineBackend = {
       const rows = await idbTx([STORE_TRACKS], 'readonly', (tx) =>
         idbRequest(tx.objectStore(STORE_TRACKS).getAll())
       );
-      return parseOfflineIndex(rows);
+      return parseOfflineIndex(rows.map((r) => ({ ...r, videoId: r.track?.videoId || r.videoId })));
     } catch {
-      return [];
+      throw new Error('Database unduhan browser tidak dapat dibaca. Periksa izin penyimpanan.');
     }
   },
 
@@ -361,7 +304,7 @@ const webBackend: OfflineBackend = {
     await idbTx([STORE_TRACKS], 'readwrite', (tx) => {
       const store = tx.objectStore(STORE_TRACKS);
       store.clear();
-      for (const r of records) store.put(r);
+      for (const r of records) store.put({ ...r, videoId: downloadKey(r) });
     });
   },
 
@@ -389,22 +332,13 @@ const webBackend: OfflineBackend = {
     };
   },
 
-  async saveThumb(videoId, blob) {
-    const uri = `idb://art/${videoId}`;
-    revokeObjectUrl(uri);
-    await idbTx([STORE_BLOBS], 'readwrite', (tx) => {
-      tx.objectStore(STORE_BLOBS).put(blob, `art:${videoId}`);
-    });
-    return uri;
-  },
-
   async removeFiles(record) {
     revokeObjectUrl(record.localUri);
     revokeObjectUrl(record.localThumbUri);
     await idbTx([STORE_BLOBS], 'readwrite', (tx) => {
       const store = tx.objectStore(STORE_BLOBS);
-      store.delete(`audio:${record.videoId}`);
-      store.delete(`art:${record.videoId}`);
+      store.delete(idbKeyFromUri(record.localUri) || `audio:${downloadKey(record)}`);
+      store.delete(idbKeyFromUri(record.localThumbUri || '') || `art:${downloadKey(record)}`);
     });
   },
 
@@ -424,7 +358,7 @@ const webBackend: OfflineBackend = {
     const blob = await idbTx([STORE_BLOBS], 'readonly', (tx) =>
       idbRequest(tx.objectStore(STORE_BLOBS).get(key) as IDBRequest<Blob | undefined>)
     );
-    if (!blob) return null;
+    if (!(blob instanceof Blob) || !blob.size) return null;
     const url = URL.createObjectURL(blob);
     objectUrls.set(localUri, url);
     return url;
@@ -437,7 +371,7 @@ function backend(): OfflineBackend {
 
 export function isOfflineDownloadSupported(): boolean {
   if (typeof window === 'undefined') return false;
-  if (isNativeOfflineStorage()) return true;
+  if (isNativeOfflineStorage()) return hasNativeDownloads();
   return typeof indexedDB !== 'undefined' && typeof ReadableStream !== 'undefined';
 }
 
@@ -451,10 +385,25 @@ let loadPromise: Promise<void> | null = null;
 export function ensureOfflineLibraryLoaded(): Promise<void> {
   if (typeof window === 'undefined') return Promise.resolve();
   if (!loadPromise) {
-    loadPromise = backend()
-      .loadIndex()
-      .then((records) => setSnapshot({ ready: true, records }))
-      .catch(() => setSnapshot({ ready: true, records: [] }));
+    loadError = null;
+    loadPromise = (async () => {
+      if (isNativeOfflineStorage() && hasNativeDownloads()) await NativeDownload.cleanupParts();
+      const stored = await backend().loadIndex();
+      const records: DownloadedTrack[] = [];
+      for (const record of stored) if (await validateStoredRecord(record)) records.push(record);
+      if (records.length !== stored.length) await backend().saveIndex(records);
+      const uris = records.flatMap(r => [r.localUri, ...(r.localThumbUri ? [r.localThumbUri] : [])]);
+      if (isNativeOfflineStorage() && hasNativeDownloads()) await NativeDownload.prune({ uris });
+      if (!isNativeOfflineStorage()) {
+        const keep = new Set(uris.map(uri => idbKeyFromUri(uri)));
+        await idbTx([STORE_BLOBS], 'readwrite', async tx => {
+          const store = tx.objectStore(STORE_BLOBS);
+          const keys = await idbRequest(store.getAllKeys());
+          for (const key of keys) if (!keep.has(String(key))) store.delete(key);
+        });
+      }
+      setSnapshot({ ready: true, records });
+    })().catch((err) => { loadPromise = null; loadError = err instanceof Error ? err.message : 'Daftar unduhan tidak dapat dibaca.'; setSnapshot({ ready: false }); throw err; });
   }
   return loadPromise;
 }
@@ -481,7 +430,6 @@ function settle(videoId: string, result: DownloadedTrack | Error) {
 }
 
 interface ResolvedSource {
-  url: string;
   proxyUrl: string;
   contentType: string | null;
   contentLength: number | null;
@@ -489,59 +437,71 @@ interface ResolvedSource {
 }
 
 async function resolveSource(track: Track, signal: AbortSignal): Promise<ResolvedSource> {
-  const params = new URLSearchParams({
-    videoId: track.videoId,
-    title: track.title ?? '',
-    artist: track.artist ?? '',
-  });
-  const proxyUrl = apiUrl(`/api/music/audio?${params.toString()}`);
-  let res: Response;
-  try {
-    res = await fetch(`${proxyUrl}&resolve=1`, { signal, cache: 'no-store' });
-  } catch (err) {
-    if (signal.aborted) throw err;
-    throw new DownloadError(describeDownloadError(null));
-  }
-  let body: { ok?: boolean; url?: string; message?: string; contentType?: string; contentLength?: number; source?: string } = {};
-  try {
-    body = await res.json();
-  } catch {
-    // non-JSON error page
-  }
-  if (!res.ok || !body.ok || !body.url) {
+  const params = new URLSearchParams({ videoId: track.videoId, provider: track.provider || 'youtube', title: track.title, artist: track.artist });
+  const proxyUrl = apiUrl(`/api/music/audio?${params}`);
+  const res = await fetch(`${proxyUrl}&resolve=1`, { signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]), cache: 'no-store' });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.ok || body.downloadAllowed !== true) {
     throw new DownloadError(describeDownloadError(res.status, body.message));
   }
-  return {
-    url: body.url,
-    proxyUrl,
-    contentType: body.contentType ?? null,
-    contentLength: typeof body.contentLength === 'number' ? body.contentLength : null,
-    label: body.source ?? 'unknown',
-  };
+  return { proxyUrl, contentType: body.contentType ?? null, contentLength: body.contentLength ?? null, label: body.source ?? 'configured' };
 }
 
-async function openAudioStream(src: ResolvedSource, signal: AbortSignal): Promise<Response> {
-  // 1) straight from the (CORS-enabled) source; 2) through our proxy route.
-  for (const url of [src.url, src.proxyUrl]) {
-    try {
-      const res = await fetch(url, { signal, cache: 'no-store' });
-      if (res.ok) return res;
-      if (url === src.proxyUrl) {
-        let message: string | undefined;
-        try {
-          message = ((await res.json()) as { message?: string }).message;
-        } catch {
-          // ignore
-        }
-        throw new DownloadError(describeDownloadError(res.status, message));
+async function validateStoredRecord(record: DownloadedTrack): Promise<boolean> {
+  try {
+    if (isNativeOfflineStorage()) {
+      if (!hasNativeDownloads()) {
+        const { Filesystem, Directory } = await fs();
+        const path = relativeOfflinePath(record.localUri);
+        if (!path) return false;
+        return (await Filesystem.stat({ path, directory: Directory.Data })).size === record.fileSizeBytes;
       }
-    } catch (err) {
-      if (signal.aborted || err instanceof DownloadError) throw err;
-      if (url === src.proxyUrl) throw new DownloadError(describeDownloadError(null));
+      return (await NativeDownload.inspect({ uri: record.localUri, size: record.fileSizeBytes, sha256: record.sha256 })).valid;
     }
-  }
-  throw new DownloadError(describeDownloadError(null));
+    const key = idbKeyFromUri(record.localUri);
+    if (!key) return false;
+    const blob = await idbTx([STORE_BLOBS], 'readonly', tx => idbRequest(tx.objectStore(STORE_BLOBS).get(key))) as Blob | undefined;
+    if (!(blob instanceof Blob) || blob.size !== record.fileSizeBytes) return false;
+    validateAudioTransfer(new Uint8Array(await blob.slice(0,64).arrayBuffer()), blob.size, record.fileSizeBytes, record.mimeType);
+    if (record.sha256 && await blobHash(blob) !== record.sha256) return false;
+    return true;
+  } catch { return false; }
 }
+async function validatePlayableBlob(blob: Blob): Promise<void> {
+  // Node integration tests cover I/O; the separate browser suite exercises the decoder.
+  if (typeof document === 'undefined') return;
+  const audio = document.createElement('audio');
+  const url = URL.createObjectURL(blob);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => finish(new Error('Validasi audio melewati batas waktu.')), 15_000);
+      const finish = (error?: Error) => {
+        clearTimeout(timer); audio.onloadedmetadata = null; audio.onerror = null;
+        if (error) reject(error); else resolve();
+      };
+      audio.preload = 'metadata';
+      audio.onloadedmetadata = () => Number.isFinite(audio.duration) && audio.duration > 0
+        ? finish() : finish(new Error('Durasi audio tidak valid. Format mungkin tidak didukung browser.'));
+      audio.onerror = () => finish(new Error('Audio rusak atau format tidak dapat diputar browser ini.'));
+      audio.src = url;
+    });
+  } finally { audio.removeAttribute('src'); audio.load(); URL.revokeObjectURL(url); }
+}
+async function blobHash(blob: Blob): Promise<string> {
+  const hash = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+  return Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Index writes and record mutations must be serialised: two finishing jobs used
+// to overwrite one another's metadata. No audio is ever synced to an account.
+let mutationTail: Promise<unknown> = Promise.resolve();
+function mutate<T>(work: () => Promise<T>): Promise<T> {
+  const result = mutationTail.then(work);
+  mutationTail = result.catch(() => {});
+  return result;
+}
+let clearing = false;
+const running = new Map<string, Promise<void>>();
 
 async function fetchLyrics(track: Track, signal: AbortSignal): Promise<LyricsPayload | null> {
   try {
@@ -560,19 +520,6 @@ async function fetchLyrics(track: Track, signal: AbortSignal): Promise<LyricsPay
   }
 }
 
-async function fetchThumb(track: Track, signal: AbortSignal): Promise<Blob | null> {
-  const url = upgradeArtworkUrl(track.thumbnail);
-  if (!url) return null;
-  try {
-    const res = await fetch(url, { signal, mode: 'cors' });
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    return blob.size > 0 && blob.size < 3 * 1024 * 1024 ? blob : null;
-  } catch {
-    return null;
-  }
-}
-
 async function runJob(videoId: string) {
   const job = snapshot.queue.jobs[videoId];
   if (!job) return;
@@ -583,103 +530,118 @@ async function runJob(videoId: string) {
 
   const store = backend();
   let writer: AudioWriter | null = null;
+  let saved: DownloadedTrack | null = null;
+  const timeout = setTimeout(() => controller.abort(new Error('Batas waktu unduhan 10 menit tercapai.')), 10 * 60_000);
   try {
+    if (isNativeOfflineStorage() && getWifiOnly() && !(await NativeDownload.network()).wifi)
+      throw new DownloadError('Unduh hanya lewat Wi-Fi aktif. Sambungkan Wi-Fi lalu coba lagi.');
     const src = await resolveSource(track, controller.signal);
-    const res = await openAudioStream(src, controller.signal);
-    const contentType = (res.headers.get('content-type') || src.contentType || 'audio/mpeg').split(';')[0];
-    if (contentType.startsWith('text/') || contentType.includes('json')) {
-      throw new DownloadError(describeDownloadError(404));
-    }
-    const lenHeader = Number(res.headers.get('content-length') || res.headers.get('x-audio-length'));
-    const total = Number.isFinite(lenHeader) && lenHeader > 0 ? lenHeader : src.contentLength;
-    writer = await store.createWriter(videoId, contentType);
-
-    let received = 0;
-    let lastEmit = 0;
-    if (res.body) {
-      const reader = res.body.getReader();
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (!value) continue;
-        await writer.write(value);
-        received += value.byteLength;
-        const now = Date.now();
-        if (now - lastEmit > 150) {
-          lastEmit = now;
-          setQueue((q) => updateDownloadProgress(q, videoId, received, total));
-        }
+    controller.signal.throwIfAborted();
+    let localUri: string, size: number, contentType: string, sha256: string | undefined;
+    if (isNativeOfflineStorage()) {
+      const listener = await NativeDownload.addListener('progress', event => {
+        if (event.id === videoId) setQueue(q => updateDownloadProgress(q, videoId, event.received, event.total));
+      });
+      const abort = () => { void NativeDownload.cancel({ id: videoId }).catch(() => {}); };
+      try {
+        controller.signal.throwIfAborted();
+        // Start call before registering abort so cancel cannot race ahead of transfer.
+        const transfer = NativeDownload.transfer({ id: videoId, url: new URL(src.proxyUrl, window.location.href).href, wifiOnly: getWifiOnly() });
+        controller.signal.addEventListener('abort', abort, { once: true });
+        ({ localUri, size, mimeType: contentType, sha256 } = await transfer);
+      } catch (err) {
+        if (controller.signal.aborted) throw err;
+        throw new DownloadError(transferError(err));
+      } finally {
+        controller.signal.removeEventListener('abort', abort);
+        await listener.remove();
       }
     } else {
-      const buf = new Uint8Array(await res.arrayBuffer());
-      await writer.write(buf);
-      received = buf.byteLength;
-    }
-    if (received === 0) throw new DownloadError('File audio kosong. Coba lagi nanti.');
-    setQueue((q) => markDownloadSaving(updateDownloadProgress(q, videoId, received, total ?? received), videoId));
-
-    const { localUri, size } = await writer.finish();
-    writer = null;
-
-    const [lyrics, thumbBlob] = await Promise.all([
-      fetchLyrics(track, controller.signal),
-      fetchThumb(track, controller.signal),
-    ]);
-    let localThumbUri: string | null = null;
-    if (thumbBlob) {
+      // Same-origin validated proxy only. It resolves a fresh provider URL on every attempt.
+      const res = await fetch(src.proxyUrl, { signal: controller.signal, cache: 'no-store' });
+      if (res.status !== 200) throw new DownloadError(describeDownloadError(res.status));
+      const type = res.headers.get('content-type') || src.contentType;
+      const length = Number(res.headers.get('content-length') || res.headers.get('x-audio-length'));
+      const total = length > 0 ? length : src.contentLength;
+      if (total && total > MAX_AUDIO_BYTES) throw new DownloadError('File melebihi batas 250 MB.');
+      if (!res.body) throw new DownloadError('Browser tidak mendukung transfer audio streaming.');
+      const reader = res.body.getReader();
+      let received = 0;
+      const chunks: Uint8Array[] = [];
       try {
-        localThumbUri = await store.saveThumb(videoId, thumbBlob);
-      } catch {
-        localThumbUri = null;
-      }
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          controller.signal.throwIfAborted();
+          received += value.byteLength;
+          if (received > MAX_AUDIO_BYTES) throw new DownloadError('File melebihi batas 250 MB.');
+          chunks.push(value);
+          setQueue(q => updateDownloadProgress(q, videoId, received, total));
+        }
+      } finally { await reader.cancel().catch(() => {}); }
+      const blob = new Blob(chunks as BlobPart[]);
+      const format = validateAudioTransfer(new Uint8Array(await blob.slice(0,64).arrayBuffer()), received, total, type);
+      contentType = format.mimeType;
+      await validatePlayableBlob(blob);
+      sha256 = await blobHash(blob);
+      writer = await store.createWriter(videoId, contentType);
+      for (const chunk of chunks) { controller.signal.throwIfAborted(); await writer.write(chunk); }
+      ({ localUri, size } = await writer.finish());
+      writer = null;
     }
-
-    const record: DownloadedTrack = {
-      videoId,
-      title: track.title,
-      artist: track.artist,
-      album: track.album?.name ?? null,
-      duration: track.duration ?? null,
-      thumbnail: track.thumbnail,
-      localUri,
-      localThumbUri,
-      mimeType: contentType,
-      fileSizeBytes: size,
-      downloadedAt: Date.now(),
-      lyrics,
-      track,
-      source: src.label,
+    // Track the finalized file immediately, so cancellation/index failure cleans it too.
+    saved = {
+      videoId: track.videoId, provider: track.provider || 'youtube', sha256,
+      title: track.title, artist: track.artist, album: track.album?.name ?? null,
+      duration: track.duration ?? null, thumbnail: track.thumbnail, localUri,
+      localThumbUri: null, mimeType: contentType, fileSizeBytes: size,
+      downloadedAt: Date.now(), lyrics: null, track, source: src.label,
     };
-    const records = upsertDownloadRecord(snapshot.records, record);
-    await store.saveIndex(records);
-    setSnapshot({ records, queue: removeDownloadJob(snapshot.queue, videoId) });
+    controller.signal.throwIfAborted();
+    setQueue(q => markDownloadSaving(q, videoId));
+    if (!await validateStoredRecord(saved)) throw new DownloadError('File tidak tersedia atau tidak valid setelah disimpan.');
+    // Optional lyrics must not hold a valid audio file hostage to a slow network.
+    saved.lyrics = await fetchLyrics(track, AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]));
+    controller.signal.throwIfAborted();
+    const record = saved;
+    await mutate(async () => {
+      controller.signal.throwIfAborted();
+      const records = upsertDownloadRecord(snapshot.records, record);
+      await store.saveIndex(records);
+      if (controller.signal.aborted) {
+        await store.saveIndex(snapshot.records);
+        controller.signal.throwIfAborted();
+      }
+      setSnapshot({ records, queue: removeDownloadJob(snapshot.queue, videoId) });
+    });
+    saved = null;
     settle(videoId, record);
   } catch (err) {
     if (writer) await writer.abort().catch(() => {});
-    if (controller.signal.aborted) {
-      setQueue((q) => removeDownloadJob(q, videoId));
-      settle(videoId, new Error('Unduhan dibatalkan.'));
-    } else {
-      const message =
-        err instanceof DownloadError
-          ? err.message
-          : 'Gagal menyimpan lagu ke perangkat. Pastikan ruang penyimpanan cukup.';
-      setQueue((q) => markDownloadFailed(q, videoId, message));
-      settle(videoId, new Error(message));
-    }
+    if (saved) await store.removeFiles(saved).catch(() => {});
+    const message = controller.signal.aborted
+      ? (controller.signal.reason instanceof Error && controller.signal.reason.name !== 'AbortError' ? controller.signal.reason.message : 'Unduhan dibatalkan.')
+      : err instanceof Error ? (err.name === 'QuotaExceededError' ? 'Penyimpanan browser penuh. Hapus unduhan lain lalu coba lagi.' : err.name === 'TypeError' ? 'Koneksi audio terputus. Periksa internet lalu coba lagi.' : err.message) : 'Gagal menyimpan audio.';
+    setQueue(q => markDownloadFailed(q, videoId, message));
+    if (message === 'Unduhan dibatalkan.') setQueue(q => ({ ...q, jobs: { ...q.jobs, [videoId]: { ...q.jobs[videoId], status: 'cancelled' } } }));
+    settle(videoId, new Error(message));
   } finally {
+    clearTimeout(timeout);
     controllers.delete(videoId);
-    pump();
   }
 }
 
 function pump() {
+  if (clearing) return;
   for (;;) {
     const next = nextQueuedJob(snapshot.queue);
     if (!next) return;
     // mark synchronously so the loop does not pick it twice
-    setQueue((q) => markDownloadStarted(q, next.videoId));
-    void runJob(next.videoId);
+    const key = downloadKey(next.track);
+    setQueue((q) => markDownloadStarted(q, key));
+    const promise = runJob(key);
+    running.set(key, promise);
+    void promise.finally(() => { running.delete(key); pump(); });
   }
 }
 
@@ -690,14 +652,19 @@ let persistRequested = false;
  * with an Error whose message is ready to show in the UI.
  */
 export async function downloadTrack(track: Track): Promise<DownloadedTrack> {
-  const videoId = sanitizeVideoId(track?.videoId);
+  if (clearing) throw new Error('Tunggu penghapusan unduhan selesai.');
+  if (!sanitizeVideoId(track?.videoId) || !/^[a-z0-9_-]+$/.test(track.provider || 'youtube')) throw new Error('Identitas lagu tidak valid.');
+  track = { ...track, videoId: sanitizeVideoId(track.videoId)! };
+  const videoId = downloadKey(track);
   if (!videoId) throw new Error('ID lagu tidak valid.');
   if (!isOfflineDownloadSupported()) {
     throw new Error('Perangkat ini tidak mendukung penyimpanan offline.');
   }
   await ensureOfflineLibraryLoaded();
   const existing = snapshot.byId.get(videoId);
-  if (existing) return existing;
+  if (existing && await validateStoredRecord(existing)) return existing;
+  if (existing) await removeDownloadedTrack(videoId);
+  if (clearing) throw new Error('Tunggu penghapusan selesai.');
 
   if (!persistRequested && !isNativeOfflineStorage()) {
     persistRequested = true;
@@ -715,42 +682,44 @@ export async function downloadTrack(track: Track): Promise<DownloadedTrack> {
 }
 
 export function cancelDownload(videoId: string) {
+  videoId = downloadKey(videoId);
   const controller = controllers.get(videoId);
   if (controller) {
     controller.abort();
     return;
   }
-  setQueue((q) => removeDownloadJob(q, videoId));
+  setQueue(q => { const job = q.jobs[videoId]; return job ? { ...q, jobs: { ...q.jobs, [videoId]: { ...job, status: 'cancelled', error: 'Unduhan dibatalkan.' } } } : q; });
   settle(videoId, new Error('Unduhan dibatalkan.'));
 }
 
 /** Hides a failed download's error badge. */
 export function dismissDownloadError(videoId: string) {
-  if (snapshot.queue.jobs[videoId]?.status === 'error') {
+  videoId = downloadKey(videoId);
+  if (['error', 'cancelled'].includes(snapshot.queue.jobs[videoId]?.status)) {
     setQueue((q) => removeDownloadJob(q, videoId));
   }
 }
 
 export async function removeDownloadedTrack(videoId: string): Promise<void> {
   await ensureOfflineLibraryLoaded();
-  const record = snapshot.byId.get(videoId);
-  if (!record) return;
-  const store = backend();
-  await store.removeFiles(record);
-  const records = removeDownloadRecord(snapshot.records, videoId);
-  await store.saveIndex(records);
-  setSnapshot({ records });
+  videoId = downloadKey(videoId);
+  await mutate(async () => {
+    const record = snapshot.byId.get(videoId);
+    if (!record) return;
+    await backend().removeFiles(record);
+    const records = removeDownloadRecord(snapshot.records, videoId);
+    await backend().saveIndex(records);
+    setSnapshot({ records });
+  });
 }
 
 export async function getDownloadedTrack(videoId: string): Promise<DownloadedTrack | null> {
   await ensureOfflineLibraryLoaded();
-  return snapshot.byId.get(videoId) ?? null;
+  return snapshot.byId.get(downloadKey(videoId)) ?? null;
 }
 
-/** Synchronous lookup (null until the index has loaded). */
-export function getDownloadedTrackSync(videoId: string | null | undefined): DownloadedTrack | null {
-  if (!videoId) return null;
-  return snapshot.byId.get(videoId) ?? null;
+export function getDownloadedTrackSync(track: Pick<Track, 'videoId' | 'provider'> | string | null | undefined): DownloadedTrack | null {
+  return track ? snapshot.byId.get(downloadKey(track)) ?? null : null;
 }
 
 export async function listDownloadedTracks(): Promise<DownloadedTrack[]> {
@@ -760,9 +729,15 @@ export async function listDownloadedTracks(): Promise<DownloadedTrack[]> {
 
 export async function clearAllDownloads(): Promise<void> {
   await ensureOfflineLibraryLoaded();
-  for (const c of controllers.values()) c.abort();
-  await backend().clearAll();
-  setSnapshot({ records: [], queue: createDownloadQueue() });
+  clearing = true;
+  try {
+    for (const id of snapshot.queue.order) cancelDownload(id);
+    await Promise.allSettled([...running.values()]);
+    await mutate(async () => {
+      await backend().clearAll();
+      setSnapshot({ records: [], queue: createDownloadQueue() });
+    });
+  } finally { clearing = false; pump(); }
 }
 
 export interface OfflineStorageUsage {
@@ -787,7 +762,14 @@ export async function getOfflineStorageUsage(): Promise<OfflineStorageUsage> {
 /** Playable URL for a downloaded song (`_capacitor_file_` URL or blob: URL). */
 export async function resolveOfflinePlaybackUrl(record: DownloadedTrack): Promise<string | null> {
   try {
-    return await backend().resolveUrl(record.localUri);
+    if (await validateStoredRecord(record)) return await backend().resolveUrl(record.localUri);
+    revokeObjectUrl(record.localUri);
+    await mutate(async () => {
+      const records = removeDownloadRecord(snapshot.records, downloadKey(record));
+      await backend().saveIndex(records);
+      setSnapshot({ records });
+    });
+    return null;
   } catch {
     return null;
   }
@@ -805,7 +787,7 @@ export function findDownloadedByArtwork(src: string | null | undefined): Downloa
     if (r.thumbnail === src || r.track?.thumbnail === src) return r;
   }
   const m = /\/vi(?:_webp)?\/([A-Za-z0-9_-]{6,20})\//.exec(src);
-  return m ? snapshot.byId.get(m[1]) ?? null : null;
+  return m ? snapshot.byId.get(downloadKey(m[1])) ?? null : null;
 }
 
 export async function resolveOfflineArtworkUrl(record: DownloadedTrack): Promise<string> {
@@ -817,5 +799,5 @@ export async function resolveOfflineArtworkUrl(record: DownloadedTrack): Promise
       // fall back
     }
   }
-  return record.thumbnail;
+  return typeof navigator !== 'undefined' && !navigator.onLine ? '/favicon.svg' : record.thumbnail;
 }
