@@ -17,8 +17,3 @@ export function sortPlaylistTracks(
         )
   );
 }
-export function playlistShareText(name: string, tracks: Track[]): string {
-  return `${name}\n${tracks.length} lagu\n\n${tracks
-    .map((track, i) => `${i + 1}. ${track.title} — ${track.artist}`)
-    .join("\n")}`;
-}

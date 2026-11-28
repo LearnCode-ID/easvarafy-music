@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sortPlaylistTracks, playlistShareText } from "./playlist";
+import { sortPlaylistTracks } from "./playlist";
 import type { Track } from "@/lib/metrolist/types";
 
 const tracks: Track[] = [
@@ -51,12 +51,4 @@ test("playlist view sorting preserves persisted custom order and track identity"
   assert.deepEqual(tracks, before);
   assert.equal(sortPlaylistTracks(tracks, "artist")[0], tracks[1]);
   assert.deepEqual(sortPlaylistTracks([], "duration"), []);
-});
-
-test("playlist sharing exports a song list, not a made-up public link or owner credentials", () => {
-  assert.equal(
-    playlistShareText("Malam", tracks.slice(0, 1)),
-    "Malam\n1 lagu\n\n1. Song 10 — Zeta"
-  );
-  assert.equal(playlistShareText("Kosong", []), "Kosong\n0 lagu\n\n");
 });

@@ -22,7 +22,7 @@ const root = process.cwd();
 const stashRoot = path.join(root, '.static-export-stash');
 
 /** Server-only paths that must not be part of a static export. */
-const SERVER_ONLY = ['app/api', 'app/auth/callback', 'app/(user)/profile/[id_user]'];
+const SERVER_ONLY = ['app/api', 'app/auth/callback', 'app/(user)/profile/[id_user]', 'app/(user)/playlist/[id_playlist]'];
 
 const moved = [];
 
