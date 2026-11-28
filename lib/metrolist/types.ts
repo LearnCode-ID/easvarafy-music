@@ -11,6 +11,8 @@ export interface AlbumRef {
 }
 
 export interface Track {
+  /** Catalogue identity; absent in older libraries means YouTube. */
+  provider?: string;
   videoId: string;
   title: string;
   artist: string;

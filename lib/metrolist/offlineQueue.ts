@@ -9,6 +9,8 @@
 import type { LyricsPayload, Track } from './types';
 
 export interface DownloadedTrack {
+  provider?: string;
+  sha256?: string;
   videoId: string;
   title: string;
   artist: string;
@@ -34,7 +36,7 @@ export interface DownloadedTrack {
   source?: string;
 }
 
-export type DownloadStatus = 'queued' | 'downloading' | 'saving' | 'error';
+export type DownloadStatus = 'queued' | 'downloading' | 'saving' | 'error' | 'cancelled';
 
 export interface DownloadJob {
   videoId: string;
@@ -54,7 +56,11 @@ export interface DownloadQueueState {
   order: string[];
 }
 
-export const OFFLINE_INDEX_VERSION = 1;
+export function downloadKey(track: Pick<Track, 'videoId' | 'provider'> | string): string {
+  if (typeof track === 'string') return track.includes(':') ? track.trim() : `youtube:${track.trim()}`;
+  return `${track.provider || 'youtube'}:${track.videoId.trim()}`;
+}
+export const OFFLINE_INDEX_VERSION = 2;
 export const MAX_CONCURRENT_DOWNLOADS = 2;
 
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{6,64}$/;
@@ -75,15 +81,16 @@ export function enqueueDownload(
   track: Track,
   now: number = Date.now()
 ): DownloadQueueState {
-  const id = sanitizeVideoId(track?.videoId);
-  if (!id) return state;
+  if (!sanitizeVideoId(track?.videoId) || !/^[a-z0-9_-]+$/.test(track.provider || 'youtube')) return state;
+  track = { ...track, videoId: sanitizeVideoId(track.videoId)! };
+  const id = downloadKey(track);
   const existing = state.jobs[id];
-  if (existing && existing.status !== 'error') return state;
+  if (existing && existing.status !== 'error' && existing.status !== 'cancelled') return state;
   const job: DownloadJob = {
-    videoId: id,
+    videoId: track.videoId,
     track,
     status: 'queued',
-    progress: 0,
+    progress: null,
     receivedBytes: 0,
     totalBytes: null,
     error: null,
@@ -120,13 +127,14 @@ function patchJob(
   videoId: string,
   patch: Partial<DownloadJob>
 ): DownloadQueueState {
+  videoId = downloadKey(videoId);
   const job = state.jobs[videoId];
   if (!job) return state;
   return { ...state, jobs: { ...state.jobs, [videoId]: { ...job, ...patch } } };
 }
 
 export function markDownloadStarted(state: DownloadQueueState, videoId: string): DownloadQueueState {
-  return patchJob(state, videoId, { status: 'downloading', progress: 0, error: null });
+  return patchJob(state, videoId, { status: 'downloading', progress: null, error: null });
 }
 
 export function updateDownloadProgress(
@@ -143,7 +151,7 @@ export function updateDownloadProgress(
 }
 
 export function markDownloadSaving(state: DownloadQueueState, videoId: string): DownloadQueueState {
-  return patchJob(state, videoId, { status: 'saving', progress: 100 });
+  return patchJob(state, videoId, { status: 'saving' });
 }
 
 export function markDownloadFailed(
@@ -156,6 +164,7 @@ export function markDownloadFailed(
 
 /** Removes a job (finished, cancelled or dismissed). */
 export function removeDownloadJob(state: DownloadQueueState, videoId: string): DownloadQueueState {
+  videoId = downloadKey(videoId);
   if (!state.jobs[videoId]) return state;
   const jobs = { ...state.jobs };
   delete jobs[videoId];
@@ -220,7 +229,7 @@ export function upsertDownloadRecord(
   records: readonly DownloadedTrack[],
   record: DownloadedTrack
 ): DownloadedTrack[] {
-  return [record, ...records.filter((r) => r.videoId !== record.videoId)].sort(
+  return [record, ...records.filter((r) => downloadKey(r) !== downloadKey(record))].sort(
     (a, b) => b.downloadedAt - a.downloadedAt
   );
 }
@@ -229,7 +238,7 @@ export function removeDownloadRecord(
   records: readonly DownloadedTrack[],
   videoId: string
 ): DownloadedTrack[] {
-  return records.filter((r) => r.videoId !== videoId);
+  return records.filter((r) => downloadKey(r) !== downloadKey(videoId));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -244,16 +253,20 @@ export function parseOfflineIndex(raw: unknown): DownloadedTrack[] {
   for (const item of list) {
     if (!isRecord(item)) continue;
     const videoId = sanitizeVideoId(item.videoId);
-    if (!videoId || seen.has(videoId)) continue;
+    const provider = typeof item.provider === 'string' && /^[a-z0-9_-]+$/.test(item.provider) ? item.provider : 'youtube';
+    const key = downloadKey({videoId: videoId || '', provider});
+    if (!videoId || seen.has(key)) continue;
     if (typeof item.localUri !== 'string' || !item.localUri) continue;
     const track = isRecord(item.track) ? (item.track as unknown as Track) : null;
     const title = typeof item.title === 'string' ? item.title : track?.title ?? 'Tanpa judul';
     const artist = typeof item.artist === 'string' ? item.artist : track?.artist ?? '';
     const thumbnail = typeof item.thumbnail === 'string' ? item.thumbnail : track?.thumbnail ?? '';
     const duration = typeof item.duration === 'number' ? item.duration : track?.duration ?? null;
-    seen.add(videoId);
+    seen.add(key);
     out.push({
       videoId,
+      provider,
+      ...(typeof item.sha256 === 'string' ? { sha256: item.sha256 } : {}),
       title,
       artist,
       album: typeof item.album === 'string' ? item.album : null,
@@ -265,7 +278,8 @@ export function parseOfflineIndex(raw: unknown): DownloadedTrack[] {
       fileSizeBytes: typeof item.fileSizeBytes === 'number' ? item.fileSizeBytes : 0,
       downloadedAt: typeof item.downloadedAt === 'number' ? item.downloadedAt : 0,
       lyrics: isRecord(item.lyrics) ? (item.lyrics as unknown as LyricsPayload) : null,
-      track: track ?? {
+      track: track ? { ...track, provider } : {
+        provider,
         videoId,
         title,
         artist,
@@ -289,6 +303,8 @@ export function serializeOfflineIndex(records: readonly DownloadedTrack[]): stri
 export function describeDownloadError(status: number | null, serverMessage?: string | null): string {
   if (serverMessage && serverMessage.trim()) return serverMessage.trim();
   if (status === null) return 'Tidak ada koneksi internet. Coba lagi saat online.';
+  if (status === 401 || status === 403) return 'Provider menolak akses atau URL unduhan kedaluwarsa. Coba lagi untuk meminta sumber baru; jika tetap ditolak, lagu tidak dapat diunduh.';
+  if (status === 422) return 'Sumber bukan file audio tunggal yang didukung untuk unduhan.';
   if (status === 404) return 'Audio lagu ini belum tersedia untuk diunduh.';
   if (status === 400) return 'Permintaan unduhan tidak valid.';
   if (status === 413) return 'Ukuran file audio terlalu besar.';

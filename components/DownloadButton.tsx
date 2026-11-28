@@ -1,5 +1,6 @@
 'use client';
 
+import { downloadKey } from '@/lib/metrolist/offlineQueue';
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle, ArrowDownToLine, CheckCircle2, Loader2, Trash2, X } from 'lucide-react';
 import { useMusic } from './MusicProvider';
@@ -11,7 +12,7 @@ import {
   isOfflineDownloadSupported,
   removeDownloadedTrack,
 } from '@/lib/metrolist/offlineAudio';
-import { useOfflineTrackState, type OfflineTrackState } from '@/lib/metrolist/useOfflineLibrary';
+import { useOfflineTrackState, useOnlineStatus, type OfflineTrackState } from '@/lib/metrolist/useOfflineLibrary';
 import { useBackHandler } from '@/lib/native/backButton';
 
 /** Starts a download and reports the result through the app toast. */
@@ -19,7 +20,7 @@ export function useTrackDownloadActions() {
   const { showToast } = useMusic();
   const start = (track: Track) => {
     if (!isOfflineDownloadSupported()) {
-      showToast('Perangkat ini tidak mendukung penyimpanan offline');
+      showToast('Penyimpanan offline belum didukung. Pada Android, perbarui APK untuk memakai transfer native.');
       return;
     }
     showToast(`Mengunduh "${track.title}"…`);
@@ -32,13 +33,13 @@ export function useTrackDownloadActions() {
     );
   };
   const remove = (track: Track) => {
-    removeDownloadedTrack(track.videoId).then(
+    removeDownloadedTrack(downloadKey(track)).then(
       () => showToast(`Unduhan "${track.title}" dihapus`),
       () => showToast('Gagal menghapus unduhan')
     );
   };
   const cancel = (track: Track) => {
-    cancelDownload(track.videoId);
+    cancelDownload(downloadKey(track));
     showToast('Unduhan dibatalkan');
   };
   return { start, remove, cancel };
@@ -85,8 +86,9 @@ export function ProgressRing({
 
 function stateLabel(state: OfflineTrackState): string {
   switch (state.kind) {
+    case 'cancelled': return 'Dibatalkan — coba lagi';
     case 'idle':
-      return 'Download';
+      return 'Simpan offline';
     case 'queued':
       return 'Menunggu antrean…';
     case 'downloading':
@@ -112,7 +114,7 @@ interface DownloadButtonProps {
 
 /** Download / progress % / "Tersimpan Offline" (+ remove) status button. */
 export function DownloadButton({ track, variant = 'icon', className = '' }: DownloadButtonProps) {
-  const state = useOfflineTrackState(track.videoId);
+  const state = useOfflineTrackState(track);
   const { start, remove, cancel } = useTrackDownloadActions();
   const [confirmOpen, setConfirmOpen] = useState(false);
   useBackHandler(confirmOpen, () => setConfirmOpen(false));
@@ -134,6 +136,7 @@ export function DownloadButton({ track, variant = 'icon', className = '' }: Down
   const onClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     switch (state.kind) {
+      case 'cancelled':
       case 'idle':
       case 'error':
         start(track);
@@ -162,6 +165,7 @@ export function DownloadButton({ track, variant = 'icon', className = '' }: Down
 
   const icon = (() => {
     switch (state.kind) {
+      case 'cancelled':
       case 'idle':
         return <ArrowDownToLine className="w-4 h-4" />;
       case 'queued':
@@ -256,7 +260,7 @@ export function DownloadButton({ track, variant = 'icon', className = '' }: Down
 
 /** Row for menus (TrackContextMenu). */
 export function DownloadMenuItem({ track, onDone }: { track: Track; onDone?: () => void }) {
-  const state = useOfflineTrackState(track.videoId);
+  const state = useOfflineTrackState(track);
   const { start, remove, cancel } = useTrackDownloadActions();
   const label =
     state.kind === 'downloaded'
@@ -265,7 +269,7 @@ export function DownloadMenuItem({ track, onDone }: { track: Track; onDone?: () 
         ? `${stateLabel(state)} · Batal`
         : state.kind === 'error'
           ? 'Coba Download Lagi'
-          : 'Download (Offline)';
+          : 'Simpan offline di aplikasi';
   return (
     <button
       type="button"
@@ -306,4 +310,12 @@ export function OfflineBadge({ videoId }: { videoId: string }) {
       <CheckCircle2 className="w-3 h-3" />
     </span>
   );
+}
+
+/** Explicit availability in mixed playlists; never alters the queue. */
+export function OfflineAvailability({ track }: { track: Track }) {
+  const state = useOfflineTrackState(track);
+  const online = useOnlineStatus();
+  if (online || state.kind === 'downloaded') return null;
+  return <span className="text-[10px] text-amber-600 dark:text-amber-300">Belum diunduh</span>;
 }

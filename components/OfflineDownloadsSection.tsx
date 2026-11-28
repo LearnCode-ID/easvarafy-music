@@ -1,5 +1,6 @@
 'use client';
 
+import { downloadKey } from '@/lib/metrolist/offlineQueue';
 import React, { useEffect, useState } from 'react';
 import { AlertCircle, ArrowDownToLine, Play, RotateCcw, Shuffle, WifiOff, X } from 'lucide-react';
 import { ArtworkImage } from './ArtworkImage';
@@ -8,6 +9,7 @@ import { useMusic } from './MusicProvider';
 import { formatDuration } from '@/lib/metrolist/lyrics';
 import {
   cancelDownload,
+  ensureOfflineLibraryLoaded,
   dismissDownloadError,
   formatBytes,
   resolveOfflineArtworkUrl,
@@ -18,7 +20,7 @@ import { cn } from '@/lib/utils';
 
 /** Cover art from local storage (works offline), falling back to the remote URL. */
 function OfflineArtwork({ record }: { record: DownloadedTrack }) {
-  const [src, setSrc] = useState(record.thumbnail);
+  const [src, setSrc] = useState('/favicon.svg');
   useEffect(() => {
     let alive = true;
     void resolveOfflineArtworkUrl(record).then((url) => {
@@ -36,7 +38,7 @@ function OfflineArtwork({ record }: { record: DownloadedTrack }) {
 /** Library › Offline: downloaded songs + the active download queue. */
 export function OfflineDownloadsSection() {
   const { playTrack, currentTrack, playbackSource } = useMusic();
-  const { ready, records, queue, totalBytes } = useOfflineLibrary();
+  const { ready, error, records, queue, totalBytes } = useOfflineLibrary();
   const online = useOnlineStatus();
   const { start } = useTrackDownloadActions();
   const jobs = queue.order.map((id) => queue.jobs[id]).filter(Boolean);
@@ -44,6 +46,16 @@ export function OfflineDownloadsSection() {
 
   return (
     <div className="space-y-3" data-testid="offline-downloads-section">
+      {error && <div role="alert" className="rounded-2xl p-4 bg-red-500/10 text-sm text-red-500">
+        {error} <button type="button" className="underline" onClick={() => { void ensureOfflineLibraryLoaded().catch(() => {}); }}>Coba lagi</button>
+      </div>}
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        Simpan offline di aplikasi, bukan ekspor ke folder Downloads. Hanya sumber yang mengizinkan unduhan.
+        Unduhan lokal perangkat ini tersedia untuk guest dan semua akun di perangkat; logout tidak menghapusnya.
+        Uninstall APK umumnya menghapus file privat. Di web, audio disimpan di IndexedDB dan dapat dihapus browser;
+        pembukaan aplikasi tanpa internet memerlukan shell aplikasi yang sudah tersimpan.
+        Biarkan aplikasi terbuka selama mengunduh; jeda/lanjut dan unduh saat aplikasi ditutup belum didukung.
+      </p>
       {!online && (
         <div className="flex items-start gap-3 rounded-[22px] p-4 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-sm">
           <WifiOff className="w-5 h-5 shrink-0 mt-0.5" />
@@ -90,11 +102,11 @@ export function OfflineDownloadsSection() {
       {jobs.length > 0 && (
         <div className="rounded-[28px] metro-surface divide-y divide-black/5 dark:divide-white/[0.06]">
           {jobs.map((job) => (
-            <div key={job.videoId} className="flex items-center gap-3 px-4 py-2.5">
+            <div key={downloadKey(job.track)} className="flex items-center gap-3 px-4 py-2.5">
               <ArtworkImage src={job.track.thumbnail} alt={job.track.title} className="w-11 h-11 opacity-70" rounded="rounded-xl" sizeHint="sm" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold truncate text-slate-900 dark:text-white">{job.track.title}</p>
-                {job.status === 'error' ? (
+                {(job.status === 'error' || job.status === 'cancelled') ? (
                   <p className="text-xs text-red-500 flex items-center gap-1 truncate">
                     <AlertCircle className="w-3 h-3 shrink-0" />
                     <span className="truncate">{job.error}</span>
@@ -109,7 +121,7 @@ export function OfflineDownloadsSection() {
                   </p>
                 )}
               </div>
-              {job.status === 'error' ? (
+              {(job.status === 'error' || job.status === 'cancelled') ? (
                 <>
                   <button
                     type="button"
@@ -121,7 +133,7 @@ export function OfflineDownloadsSection() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => dismissDownloadError(job.videoId)}
+                    onClick={() => dismissDownloadError(downloadKey(job.track))}
                     aria-label="Tutup"
                     className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-full text-slate-500 hover:bg-black/5 dark:hover:bg-white/10"
                   >
@@ -133,7 +145,7 @@ export function OfflineDownloadsSection() {
                   <ProgressRing progress={job.status === 'queued' ? null : job.progress} size={24} />
                   <button
                     type="button"
-                    onClick={() => cancelDownload(job.videoId)}
+                    onClick={() => cancelDownload(downloadKey(job.track))}
                     aria-label="Batalkan unduhan"
                     className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-full text-slate-500 hover:bg-black/5 dark:hover:bg-white/10"
                   >
@@ -155,10 +167,10 @@ export function OfflineDownloadsSection() {
       ) : records.length > 0 ? (
         <div className="rounded-[28px] metro-surface divide-y divide-black/5 dark:divide-white/[0.06]">
           {records.map((record) => {
-            const active = currentTrack?.videoId === record.videoId;
+            const active = currentTrack && downloadKey(currentTrack) === downloadKey(record);
             return (
               <div
-                key={record.videoId}
+                key={downloadKey(record)}
                 data-testid="offline-track-row"
                 className={cn(
                   'flex items-center gap-3 px-4 py-2.5 first:rounded-t-[28px] last:rounded-b-[28px]',
