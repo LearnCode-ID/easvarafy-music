@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   build-apk:
-    name: Build debug APK
+    name: Build signed APK
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
@@ -28,6 +28,12 @@ jobs:
       # The APK is a static export with no server of its own: the music routes
       # (/api/music/*) are reached on the deployed web build. Same endpoints,
       # same data source as the web app.
+      NEXT_PUBLIC_APP_URL: https://easvarafy-music.vercel.app
+      ANDROID_APP_LINKS_SHA256_FINGERPRINTS: ${{ vars.ANDROID_APP_LINKS_SHA256_FINGERPRINTS }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       NEXT_PUBLIC_API_BASE: ${{ secrets.NEXT_PUBLIC_API_BASE || 'https://easvarafy-music.vercel.app' }}
       # The APK loads the live web app from this host (capacitor.config.ts
       # server.url), so web deploys update the app without a new APK. The
@@ -44,6 +50,16 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Check stable signing configuration
+        shell: bash
+        run: |
+          for key in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD ANDROID_APP_LINKS_SHA256_FINGERPRINTS; do
+            if [ -z "${!key}" ]; then
+              echo "::error::Missing $key. Follow docs/android-app-links.md; ephemeral debug keys cannot verify production links."
+              exit 1
+            fi
+          done
+
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
@@ -59,7 +75,9 @@ jobs:
             lib/app/version.test.ts \
             lib/notifications/shared.test.ts \
             lib/server/fcm.test.ts \
-            lib/native/backButton.test.ts
+            lib/native/backButton.test.ts \
+            lib/native/appLinks.test.ts
+          node --test tests/android-app-links.test.mjs
 
       - name: Build web (static export)
         run: npm run build:static
@@ -111,17 +129,27 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('android/**/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.os }}-
 
-      - name: Build debug APK
+      - name: Restore and verify signing identity
+        shell: bash
+        run: |
+          umask 077
+          export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/easvarafy-release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$ANDROID_KEYSTORE_PATH" >> "$GITHUB_ENV"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
+          keytool -exportcert -keystore "$ANDROID_KEYSTORE_PATH" -alias "$ANDROID_KEY_ALIAS" -storepass:env ANDROID_KEYSTORE_PASSWORD -file "$RUNNER_TEMP/easvarafy-signing.der"
+          node scripts/verify-android-signing.mjs "$RUNNER_TEMP/easvarafy-signing.der"
+
+      - name: Build signed APK
         working-directory: android
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: easvarafy-app-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: easvarafy-app-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -130,7 +158,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          APK_SRC="android/app/build/outputs/apk/debug/app-debug.apk"
+          APK_SRC="android/app/build/outputs/apk/release/app-release.apk"
           if [ ! -f "$APK_SRC" ]; then
             echo "::error::APK not found at $APK_SRC"
             exit 1
@@ -164,3 +192,7 @@ jobs:
               --target "${{ github.sha }}" \
               --latest
           fi
+
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/easvarafy-release.jks" "$RUNNER_TEMP/easvarafy-signing.der"

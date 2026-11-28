@@ -165,7 +165,7 @@ interface MusicContextValue {
   activeTab: NavTab;
   setActiveTab: (tab: NavTab) => void;
   detailTarget: DetailTarget | null;
-  openDetail: (target: DetailTarget | null) => void;
+  openDetail: (target: DetailTarget | null, options?: { keepRoute?: boolean }) => void;
 
   // Player state
   queueState: QueueState;
@@ -1780,7 +1780,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   );
 
   const openDetail = useCallback(
-    (target: DetailTarget | null) => {
+    (target: DetailTarget | null, options?: { keepRoute?: boolean }) => {
       if (target?.kind === "user-playlist") {
         router.push(playlistPath(target.id, isNativeApp()));
         setDetailTarget(null);
@@ -1792,11 +1792,11 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       } else if (target?.kind === "blend") {
         router.push(`/blend?id=${target.id}`);
         setDetailTarget(null);
-      } else if (!target && pathname.startsWith("/playlist")) {
+      } else if (!target && !options?.keepRoute && pathname.startsWith("/playlist")) {
         setActiveTabState("library");
         router.push("/");
         setDetailTarget(null);
-      } else if (!target && pathname.startsWith("/blend")) {
+      } else if (!target && !options?.keepRoute && pathname.startsWith("/blend")) {
         router.push("/blend");
         setDetailTarget(null);
       } else setDetailTarget(target);

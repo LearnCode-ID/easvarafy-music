@@ -26,6 +26,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
+import { configureAppLinks } from './android-app-links.mjs';
 
 const root = process.cwd();
 const manifestPath = path.join(root, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
@@ -38,7 +39,7 @@ const valuesDir = path.join(resDir, 'values');
 const valuesV31Dir = path.join(resDir, 'values-v31');
 
 if (existsSync(manifestPath)) {
-  let manifest = readFileSync(manifestPath, 'utf8');
+  let manifest = configureAppLinks(readFileSync(manifestPath, 'utf8'));
 
   if (!manifest.includes('android:scheme="com.easvarafy.app"')) {
     const deepLinkFilter = `
@@ -971,6 +972,8 @@ if (existsSync(appGradlePath)) {
   const rawName = (process.env.APP_VERSION_NAME || pkgVersion).trim().replace(/^v/i, '');
   const versionName = /^[0-9A-Za-z._+-]{1,40}$/.test(rawName) ? rawName : pkgVersion;
   const before = gradle;
+  const signingScript = "apply from: '../../scripts/android-release-signing.gradle'";
+  if (!gradle.includes(signingScript)) gradle += `\n${signingScript}\n`;
   gradle = gradle
     .replace(/versionCode\s+\d+/, `versionCode ${versionCode}`)
     .replace(/versionName\s+"[^"]*"/, `versionName "${versionName}"`);

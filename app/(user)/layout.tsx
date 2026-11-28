@@ -1,4 +1,5 @@
 "use client";
+import { AppLinksBridge } from '@/components/native/AppLinksBridge';
 import { Suspense } from "react";
 import { MusicProvider } from "@/components/MusicProvider";
 import { EasvarafyShell } from "@/components/EasvarafyShell";
@@ -11,6 +12,7 @@ export default function UserLayout({
   return (
     <MusicProvider>
       <Suspense fallback={null}>
+        <AppLinksBridge />
         <EasvarafyShell />
       </Suspense>
       {children}
