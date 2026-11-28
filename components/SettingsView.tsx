@@ -49,6 +49,7 @@ import {
   X,
 } from 'lucide-react';
 import { useMusic } from './MusicProvider';
+import { hasNativeDownloads, getWifiOnly, setWifiOnly } from '@/lib/native/downloads';
 import { clearAllDownloads, formatBytes, getOfflineStorageUsage } from '@/lib/metrolist/offlineAudio';
 import { useOfflineLibrary } from '@/lib/metrolist/useOfflineLibrary';
 import { AccountSettingsSection } from './AccountSettingsSection';
@@ -281,17 +282,19 @@ function OfflineDownloadsSettings() {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [quota, setQuota] = useState<number | null>(null);
-  const activeJobs = queue.order.length;
+  const activeJobs = queue.order.filter(id => ['queued','downloading','saving'].includes(queue.jobs[id]?.status)).length;
+  const [wifiOnly, updateWifiOnly] = useState(false);
+  React.useEffect(() => { queueMicrotask(() => updateWifiOnly(getWifiOnly())); }, []);
 
   React.useEffect(() => {
     let alive = true;
     void getOfflineStorageUsage().then((u) => {
       if (alive) setQuota(u.quotaBytes);
-    });
+    }).catch(() => showToast('Penggunaan penyimpanan tidak dapat dibaca.'));
     return () => {
       alive = false;
     };
-  }, [records.length]);
+  }, [records.length, showToast]);
 
   return (
     <>
@@ -308,6 +311,14 @@ function OfflineDownloadsSettings() {
           </span>
         }
       />
+      {hasNativeDownloads() && <PreferenceRow
+        icon={Download}
+        title="Unduh hanya lewat Wi-Fi"
+        description="Diperiksa saat transfer dimulai dan selama menerima data. Tidak melanjutkan otomatis."
+        trailing={<button type="button" role="switch" aria-checked={wifiOnly}
+          className="px-3.5 h-8 rounded-full text-xs bg-[var(--m3-primary-soft)] text-[var(--m3-primary)]"
+          onClick={() => { setWifiOnly(!wifiOnly); updateWifiOnly(!wifiOnly); }}>{wifiOnly ? 'Aktif' : 'Nonaktif'}</button>}
+      />}
       <PreferenceRow
         icon={Trash2}
         title="Hapus Semua Unduhan"

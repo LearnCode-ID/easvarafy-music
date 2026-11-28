@@ -12,7 +12,7 @@ export interface AlbumRef {
 
 export interface Track {
   /** Existing catalogue IDs are YouTube IDs; future providers must qualify theirs. */
-  provider?: 'youtube';
+  provider?: string;
   available?: boolean;
   videoId: string;
   title: string;

@@ -94,6 +94,7 @@ import {
   getDownloadedTrackSync,
   getOfflineSnapshot,
   resolveOfflinePlaybackUrl,
+  removeDownloadedTrack,
   subscribeOffline,
 } from "@/lib/metrolist/offlineAudio";
 import { BACK_PRIORITY_PAGE, useBackHandler } from "@/lib/native/backButton";
@@ -1027,11 +1028,17 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         settingsRef.current.keepPausedOnSongChange;
 
       if (!getOfflineSnapshot().ready) {
-        await ensureOfflineLibraryLoaded();
+        try {
+          await ensureOfflineLibraryLoaded();
+        } catch {
+          showToast(
+            "Daftar unduhan tidak dapat dibaca. Penyimpanan offline tidak tersedia."
+          );
+        }
         if (token !== engineLoadTokenRef.current) return;
       }
 
-      const record = getDownloadedTrackSync(track.videoId);
+      const record = getDownloadedTrackSync(track);
       if (record) {
         const url = await resolveOfflinePlaybackUrl(record);
         if (token !== engineLoadTokenRef.current) return;
@@ -1055,7 +1062,14 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
           }
           return;
         }
-        showToast("File offline tidak ditemukan — memutar online");
+        stopLocalAudio();
+        intendedPlayingRef.current = false;
+        setIsPlaying(false);
+        setIsBuffering(false);
+        showToast(
+          "File offline hilang atau rusak. Unduh ulang, atau hapus unduhan lalu pilih putar online."
+        );
+        return;
       }
 
       // ---- Online (YouTube IFrame) ----
@@ -1064,22 +1078,6 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       stopLocalAudio();
 
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
-        // No internet and the song is not downloaded: jump to the next
-        // downloaded song in the queue instead of spinning forever.
-        const q = queueStateRef.current;
-        const nextOffline = q.queue.findIndex(
-          (t, i) =>
-            i > q.currentIndex && Boolean(getDownloadedTrackSync(t.videoId))
-        );
-        if (nextOffline >= 0 && intendedPlayingRef.current) {
-          showToast("Offline — lanjut ke lagu tersimpan berikutnya");
-          setQueueState((prev) =>
-            prev.queue[nextOffline]?.videoId === q.queue[nextOffline]?.videoId
-              ? { ...prev, currentIndex: nextOffline }
-              : prev
-          );
-          return;
-        }
         userPausedRef.current = true;
         intendedPlayingRef.current = false;
         setIsPlaying(false);
@@ -1115,7 +1113,9 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
 
     let cancelled = false;
     lastLoadedVideoIdRef.current = currentTrack.videoId;
-    void loadTrackIntoEngine(currentTrack);
+    queueMicrotask(() => {
+      if (!cancelled) void loadTrackIntoEngine(currentTrack);
+    });
 
     const syncTrackData = async () => {
       setCurrentTime(0);
@@ -1129,15 +1129,22 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         artist: currentTrack.artist,
         duration: String(currentTrack.duration ?? 0),
       });
-      await ensureOfflineLibraryLoaded();
+      await ensureOfflineLibraryLoaded().catch(() => {});
       const offlineLyrics =
-        getDownloadedTrackSync(currentTrack.videoId)?.lyrics ?? null;
+        getDownloadedTrackSync(currentTrack)?.lyrics ?? null;
       const isOffline =
         typeof navigator !== "undefined" && navigator.onLine === false;
 
-      if (offlineLyrics && isOffline) {
+      if (isOffline) {
         if (!cancelled) {
-          setLyrics(offlineLyrics);
+          setLyrics(
+            offlineLyrics ?? {
+              synced: false,
+              lines: [],
+              plainText: null,
+              source: "none",
+            }
+          );
           setLyricsLoading(false);
         }
       } else {
@@ -1190,7 +1197,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const seed = currentTrack;
     const ticket = recommendationGate.next();
-    if (!settings.autoContinueRadio) return;
+    if (!settings.autoContinueRadio || navigator.onLine === false) return;
     if (!seed || queueState.queue.length - 1 - queueState.currentIndex > 2)
       return;
     let cancelled = false;
@@ -1403,30 +1410,23 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     };
     const onError = () => {
       if (!active()) return;
-      // Missing / corrupt local file: fall back to online playback.
-      const track = getCurrentTrack(queueStateRef.current);
-      engineRef.current = "yt";
-      setPlaybackSource("online");
+      // Never silently stream on local failure (data charges / user intent).
+      const failedTrack = getCurrentTrack(queueStateRef.current);
+      if (failedTrack)
+        void removeDownloadedTrack(
+          `${failedTrack.provider || "youtube"}:${failedTrack.videoId}`
+        ).catch(() =>
+          showToast(
+            "File bermasalah tidak dapat dihapus. Hapus melalui daftar Unduhan."
+          )
+        );
       stopLocalAudio();
       setIsBuffering(false);
-      if (
-        track &&
-        navigator.onLine !== false &&
-        ytReadyRef.current &&
-        ytPlayerRef.current
-      ) {
-        showToast("File offline gagal diputar — beralih ke online");
-        try {
-          ytPlayerRef.current.loadVideoById(track.videoId);
-          if (intendedPlayingRef.current) ytPlayerRef.current.playVideo();
-        } catch {
-          // ignore
-        }
-      } else {
-        showToast("File offline gagal diputar");
-        intendedPlayingRef.current = false;
-        setIsPlaying(false);
-      }
+      intendedPlayingRef.current = false;
+      setIsPlaying(false);
+      showToast(
+        "File offline gagal diputar. Hapus unduhan lalu unduh ulang; untuk streaming pilih putar lagi setelah dihapus."
+      );
     };
 
     audio.addEventListener("playing", onPlaying);
@@ -1447,18 +1447,31 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     };
   }, [pauseYouTube, showToast, stopLocalAudio]);
 
-  // Load the offline index early; if the playing download gets deleted, switch
-  // the current song back to online playback.
+  // Device-local index: stop without automatic streaming when a download vanishes.
   useEffect(() => {
-    void ensureOfflineLibraryLoaded();
+    void ensureOfflineLibraryLoaded().catch(() =>
+      showToast(
+        "Daftar unduhan tidak dapat dibuka. Periksa penyimpanan lalu buka ulang aplikasi."
+      )
+    );
     return subscribeOffline(() => {
       const localId = localVideoIdRef.current;
       if (engineRef.current !== "local" || !localId) return;
-      if (getDownloadedTrackSync(localId)) return;
-      const track = getCurrentTrack(queueStateRef.current);
-      if (track && track.videoId === localId) void loadTrackIntoEngine(track);
+      const activeTrack = getCurrentTrack(queueStateRef.current);
+      if (
+        activeTrack?.videoId === localId &&
+        getDownloadedTrackSync(activeTrack)
+      )
+        return;
+      stopLocalAudio();
+      intendedPlayingRef.current = false;
+      setIsPlaying(false);
+      setIsBuffering(false);
+      showToast(
+        "File offline tidak tersedia. Unduh ulang atau pilih putar lagi saat online."
+      );
     });
-  }, [loadTrackIntoEngine]);
+  }, [loadTrackIntoEngine, stopLocalAudio, showToast]);
 
   // Opened without internet: go straight to the Library (offline downloads).
   useEffect(() => {
@@ -1770,6 +1783,16 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
 
   const playTrack = useCallback(
     (track: Track, contextQueue?: Track[]) => {
+      if (
+        navigator.onLine === false &&
+        getOfflineSnapshot().ready &&
+        !getDownloadedTrackSync(track)
+      ) {
+        showToast(
+          "Lagu ini belum diunduh. Antrean tidak diubah; pilih lagu tersimpan atau sambungkan internet."
+        );
+        return;
+      }
       explicitSkip();
       beginListening(track, "explicit");
       recommendationGate.cancel();
@@ -1778,7 +1801,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       bgRecoveryCountRef.current = 0;
       setQueueState((prev) => playTrackInQueue(prev, track, contextQueue));
       setIsPlaying(true);
-      if (getDownloadedTrackSync(track.videoId)) {
+      if (getDownloadedTrackSync(track)) {
         // Downloaded: play the local file (the track effect loads it). Stop the
         // IFrame right away so the two engines never overlap.
         pauseYouTube();
@@ -1812,6 +1835,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       beginListening,
       explicitSkip,
       recommendationGate,
+      showToast,
     ]
   );
 
@@ -1943,20 +1967,21 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
         title: currentTrack.title,
         artist: currentTrack.artist,
         album: currentTrack.album?.name || "Easvarafy Music",
-        artwork: currentTrack.thumbnail
-          ? [
-              {
-                src: currentTrack.thumbnail,
-                sizes: "256x256",
-                type: "image/jpeg",
-              },
-              {
-                src: currentTrack.thumbnail,
-                sizes: "544x544",
-                type: "image/jpeg",
-              },
-            ]
-          : [],
+        artwork:
+          currentTrack.thumbnail && navigator.onLine !== false
+            ? [
+                {
+                  src: currentTrack.thumbnail,
+                  sizes: "256x256",
+                  type: "image/jpeg",
+                },
+                {
+                  src: currentTrack.thumbnail,
+                  sizes: "544x544",
+                  type: "image/jpeg",
+                },
+              ]
+            : [],
       });
       navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
       navigator.mediaSession.setActionHandler("play", () => {
@@ -2105,7 +2130,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       playing: isPlaying,
       rate,
     };
-    const offlineRecord = getDownloadedTrackSync(currentTrack.videoId);
+    const offlineRecord = getDownloadedTrackSync(currentTrack);
     const localArtwork =
       offlineRecord?.localThumbUri?.startsWith("file://") &&
       typeof navigator !== "undefined" &&
@@ -2116,7 +2141,10 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       title: currentTrack.title,
       artist: currentTrack.artist,
       album: currentTrack.album?.name || "",
-      artworkUrl: localArtwork ?? upgradeArtworkUrl(currentTrack.thumbnail),
+      artworkUrl:
+        navigator.onLine === false
+          ? localArtwork
+          : upgradeArtworkUrl(currentTrack.thumbnail),
       playing: isPlaying,
       position,
       duration: effectiveDuration,
@@ -2307,7 +2335,8 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
     .join("|");
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (!settingsRef.current.autoContinueRadio) return;
+      if (!settingsRef.current.autoContinueRadio || navigator.onLine === false)
+        return;
       // Explicit safety choices may remove even the pinned automatic next.
       setQueueState((prev) => {
         const safe = new Set(

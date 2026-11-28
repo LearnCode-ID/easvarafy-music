@@ -14,13 +14,14 @@
     "cap:open": "npx cap open android",
     "apk:debug": "cd android && ./gradlew assembleDebug",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test lib/**/*.test.ts",
+    "test": "tsx --test lib/**/*.test.ts app/api/music/audio/*.test.ts",
     "test:database": "node --test tests/*.test.mjs",
     "playlists:cleanup": "node scripts/cleanup-demo-playlists.mjs",
     "test:browser": "node tests/browser-smoke.mjs",
     "test:browser:social": "node tests/browser-social.mjs",
     "test:browser:library": "node tests/browser-library-loading.mjs",
-    "test:browser:recommendations": "node tests/browser-recommendations.mjs"
+    "test:browser:recommendations": "node tests/browser-recommendations.mjs",
+    "test:browser:downloads": "node tests/browser-downloads.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.2",
@@ -53,8 +54,10 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "esbuild": "^0.28.2",
     "eslint": "9.39.1",
     "eslint-config-next": "^16.4.6",
+    "fake-indexeddb": "^6.2.8",
     "firebase-tools": "^15.0.0",
     "playwright": "^1.65.1",
     "tailwindcss": "4.1.11",

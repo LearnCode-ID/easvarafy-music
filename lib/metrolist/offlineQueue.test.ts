@@ -35,6 +35,7 @@ import type { Track } from './types';
 function track(id: string, title = `Song ${id}`): Track {
   return {
     videoId: id,
+    provider: 'youtube',
     title,
     artist: 'Artist',
     artists: [{ artistId: null, name: 'Artist' }],
@@ -49,6 +50,7 @@ function record(id: string, downloadedAt: number, size = 1000): DownloadedTrack 
   const t = track(id);
   return {
     videoId: id,
+    provider: 'youtube',
     title: t.title,
     artist: t.artist,
     album: null,
@@ -79,8 +81,8 @@ test('download queue: FIFO, dedupe, concurrency limit and lifecycle', () => {
   q = enqueueDownload(q, track('bbbbbb2'), 2);
   q = enqueueDownload(q, track('cccccc3'), 3);
   q = enqueueDownload(q, track('aaaaaa1'), 4); // duplicate ignored
-  assert.deepEqual(q.order, ['aaaaaa1', 'bbbbbb2', 'cccccc3']);
-  assert.equal(q.jobs.aaaaaa1.enqueuedAt, 1);
+  assert.deepEqual(q.order, ['youtube:aaaaaa1', 'youtube:bbbbbb2', 'youtube:cccccc3']);
+  assert.equal(q.jobs['youtube:aaaaaa1'].enqueuedAt, 1);
 
   assert.equal(nextQueuedJob(q, 2)?.videoId, 'aaaaaa1');
   q = markDownloadStarted(q, 'aaaaaa1');
@@ -90,13 +92,13 @@ test('download queue: FIFO, dedupe, concurrency limit and lifecycle', () => {
   assert.equal(nextQueuedJob(q, 2), null, 'respects max concurrency');
 
   q = updateDownloadProgress(q, 'aaaaaa1', 512, 1024);
-  assert.equal(q.jobs.aaaaaa1.progress, 50);
+  assert.equal(q.jobs['youtube:aaaaaa1'].progress, 50);
   q = markDownloadSaving(q, 'aaaaaa1');
-  assert.equal(q.jobs.aaaaaa1.status, 'saving');
+  assert.equal(q.jobs['youtube:aaaaaa1'].status, 'saving');
   assert.equal(activeDownloadCount(q), 2, 'saving still counts as active');
 
   q = removeDownloadJob(q, 'aaaaaa1');
-  assert.deepEqual(q.order, ['bbbbbb2', 'cccccc3']);
+  assert.deepEqual(q.order, ['youtube:bbbbbb2', 'youtube:cccccc3']);
   assert.equal(nextQueuedJob(q, 2)?.videoId, 'cccccc3');
 });
 
@@ -104,15 +106,15 @@ test('failed downloads keep their error and can be re-queued', () => {
   let q = enqueueDownload(createDownloadQueue(), track('dddddd4'), 1);
   q = markDownloadStarted(q, 'dddddd4');
   q = markDownloadFailed(q, 'dddddd4', 'Audio lagu ini belum tersedia untuk diunduh.');
-  assert.equal(q.jobs.dddddd4.status, 'error');
-  assert.equal(q.jobs.dddddd4.error, 'Audio lagu ini belum tersedia untuk diunduh.');
+  assert.equal(q.jobs['youtube:dddddd4'].status, 'error');
+  assert.equal(q.jobs['youtube:dddddd4'].error, 'Audio lagu ini belum tersedia untuk diunduh.');
   assert.equal(activeDownloadCount(q), 0);
   assert.equal(nextQueuedJob(q), null, 'errors are not retried automatically');
 
   q = enqueueDownload(q, track('dddddd4'), 9);
-  assert.equal(q.jobs.dddddd4.status, 'queued');
-  assert.equal(q.jobs.dddddd4.error, null);
-  assert.deepEqual(q.order, ['dddddd4'], 'retry keeps a single queue slot');
+  assert.equal(q.jobs['youtube:dddddd4'].status, 'queued');
+  assert.equal(q.jobs['youtube:dddddd4'].error, null);
+  assert.deepEqual(q.order, ['youtube:dddddd4'], 'retry keeps a single queue slot');
 });
 
 test('enqueue ignores tracks with invalid ids', () => {

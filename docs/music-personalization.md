@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementasi ada di working branch. **Belum dirilis ke produksi dan migrasi rekomendasi belum diterapkan ke Supabase remote.** Endpoint provider langsung dan dua akun produksi/perangkat Android fisik belum diuji dari sandbox ini (akses jaringan provider dibatasi). Pengujian browser menggunakan respons provider dan player terkontrol, bukan bukti playback YouTube langsung.
+Implementasi terintegrasi dalam source aplikasi. **Migrasi rekomendasi belum diterapkan ke Supabase remote oleh pekerjaan ini.** Status deployment aplikasi perlu diperiksa terpisah: merge Git bukan konfirmasi deployment atau penerapan migrasi. Endpoint provider langsung dan dua akun produksi/perangkat Android fisik belum diuji dari sandbox ini (akses jaringan provider dibatasi). Pengujian browser menggunakan respons provider dan player terkontrol, bukan bukti playback YouTube langsung.
 
 Sebelum mengaktifkan sinkronisasi akun pada release, terapkan hanya migrasi baru `supabase/migrations/20261127040000_private_recommendations.sql` melalui proses migrasi Supabase yang biasa. Jangan menerapkan ulang migrasi privacy/social sebelumnya. Migrasi baru bersifat aditif: satu tabel privat, satu policy SELECT owner, tiga RPC authenticated; tidak mengubah profil, likes, playlist, atau data Blend. Deploy web setelah migrasi, lalu build/sync Capacitor terhadap API web versi yang sama. Jangan mengirim service-role key ke frontend.
 
@@ -51,9 +51,10 @@ Home memakai engine yang sama tetapi bukan menyalin queue: queue dan shelf histo
 
 ## Verifikasi
 
-- `npm test`: **103** unit tests keseluruhan, termasuk engine/session/store/candidate-client/queue.
+- `npm test`: **108** unit tests keseluruhan (setelah integrasi perbaikan download/offline dari main), termasuk engine/session/store/candidate-client/queue.
 - `npm run test:database`: **4** PostgreSQL/PGlite tests keseluruhan; migrasi rekomendasi diuji langsung untuk dua akun + anon, RLS, payload whitelist, dedupe, batch/rate limit, reset epoch, dan disabled ingestion.
 - `npm run test:browser:recommendations`: cold guest, rapid selection dengan respons lama ditunda, playback clock nyata pada player fixture, substantial listen + complete, learning, feedback, bounded provider requests, viewport 390 dark/reduced motion, tanpa runtime error.
+- `npm run test:browser:downloads`: regresi browser byte/decoder audio, dedupe, kegagalan sumber, persistence, offline playback, dan penghapusan; memakai audio fixture milik test.
 - `npm run test:browser:library`: regresi skeleton di 320/390/1280, light/dark, dua preferensi motion.
 - `npm run lint`: tidak ada error; 15 warning `<img>` yang sudah ada.
 - `npm run typecheck`, `npm run build`, `npm run build:static`, dan `git diff --check`.

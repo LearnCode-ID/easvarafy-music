@@ -1,3 +1,6 @@
+import { sanitizeVideoId } from '../metrolist/offlineQueue';
+import { downloadFetch } from './downloadFetch';
+
 /**
  * Audio source adapter for offline downloads (`/api/music/audio`).
  *
@@ -47,7 +50,7 @@ function fillTemplate(template: string, videoId: string, meta: AudioTrackMeta): 
 function isHttpUrl(value: string): boolean {
   try {
     const u = new URL(value);
-    return u.protocol === 'https:' || u.protocol === 'http:';
+    return u.protocol === 'https:' && !u.username && !u.password && (!u.port || u.port === '443');
   } catch {
     return false;
   }
@@ -60,13 +63,19 @@ export function buildAudioSourceCandidates(
   env: AudioSourceEnv
 ): AudioSourceCandidate[] {
   const out: AudioSourceCandidate[] = [];
+  if (!sanitizeVideoId(videoId)) return out;
   const templates = (env.AUDIO_SOURCE_URL_TEMPLATE ?? '')
     .split(',')
     .map((t) => t.trim())
     .filter(Boolean);
   templates.forEach((template, i) => {
-    const url = fillTemplate(template, videoId, meta);
-    if (isHttpUrl(url)) out.push({ url, label: `template-${i + 1}` });
+    // Placeholders may select a path/query, never an arbitrary destination host.
+    try {
+      const origin = new URL(template).origin;
+      if (/[{}]/.test(origin)) return;
+      const url = fillTemplate(template, videoId, meta);
+      if (isHttpUrl(url) && new URL(url).origin === origin) out.push({ url, label: `template-${i + 1}` });
+    } catch { /* malformed operator template */ }
   });
 
   const storageDisabled = /^(1|true|yes)$/i.test(env.AUDIO_STORAGE_DISABLED ?? '');
@@ -97,9 +106,8 @@ export function guessMimeFromUrl(url: string): string {
   switch (m?.[1]?.toLowerCase()) {
     case 'mp3':
       return 'audio/mpeg';
-    case 'm4a':
-    case 'aac':
-      return 'audio/mp4';
+    case 'm4a': return 'audio/mp4';
+    case 'aac': return 'audio/aac';
     case 'opus':
     case 'ogg':
       return 'audio/ogg';
@@ -124,21 +132,21 @@ export interface ResolvedAudioSource {
 /** Probes the candidates (HEAD, falling back to a 1-byte ranged GET). */
 export async function resolveAudioSource(
   candidates: AudioSourceCandidate[],
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = downloadFetch,
   timeoutMs = 6000
 ): Promise<ResolvedAudioSource | null> {
   for (const candidate of candidates) {
     try {
       let res = await fetchImpl(candidate.url, {
         method: 'HEAD',
-        redirect: 'follow',
+        redirect: 'error',
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (res.status === 405 || res.status === 501) {
         res = await fetchImpl(candidate.url, {
           method: 'GET',
           headers: { Range: 'bytes=0-0' },
-          redirect: 'follow',
+          redirect: 'error',
           signal: AbortSignal.timeout(timeoutMs),
         });
         void res.body?.cancel().catch(() => {});
